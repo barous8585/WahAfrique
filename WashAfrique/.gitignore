@@ -1,0 +1,32 @@
+# Base de données SQLite (sera recréée automatiquement)
+*.db
+washafrique.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backups
+*_backup.py
+*_old.py
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
