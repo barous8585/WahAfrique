@@ -114,7 +114,7 @@ def format_fcfa(montant):
 
 # ===== AUTHENTIFICATION =====
 def check_authentication():
-    """Vérifie si l\'utilisateur est connecté"""
+    """Vérifie si l'utilisateur est connecté"""
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
     
@@ -127,7 +127,7 @@ def check_authentication():
             st.markdown("### Solution de Gestion Entreprise de Nettoyage Esthétique")
             st.markdown("---")
             
-            username = st.text_input("👤 Nom d\'utilisateur", placeholder="Entrez votre identifiant")
+            username = st.text_input("👤 Nom d'utilisateur", placeholder="Entrez votre identifiant")
             password = st.text_input("🔒 Mot de passe", type="password", placeholder="Entrez votre mot de passe")
             
             if st.button("🚀 Se connecter", use_container_width=True, type="primary"):
@@ -147,7 +147,7 @@ def check_authentication():
     
     return True
 
-# Vérifier l\'authentification
+# Vérifier l'authentification
 if not check_authentication():
     st.stop()
 
@@ -190,7 +190,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("📅 RDV Aujourd\'hui", stats["rdv_today"])
+            st.metric("📅 RDV Aujourd'hui", stats["rdv_today"])
         with col2:
             st.metric("💰 CA Jour", format_fcfa(stats["revenus_today"]))
         with col3:
@@ -224,7 +224,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 st.info("Aucune donnée disponible")
         
         st.markdown("---")
-        st.subheader("⏰ Activité Employés Aujourd\'hui")
+        st.subheader("⏰ Activité Employés Aujourd'hui")
         
         # Afficher les pointages du jour
         pointages_today = st.session_state.db.get_pointages_jour(date.today().isoformat())
@@ -299,7 +299,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 
                 with col1:
                     tel = st.text_input("📞 Téléphone *", placeholder="+225 XX XX XX XX")
-                    username_emp = st.text_input("🔐 Nom d\'utilisateur *", placeholder="jean.k")
+                    username_emp = st.text_input("🔐 Nom d'utilisateur *", placeholder="jean.k")
                 
                 with col2:
                     poste = st.text_input("🏷️ Poste", placeholder="Ex: Nettoyeur")
@@ -377,20 +377,59 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
                     
                     with col1:
-                        st.write(f"**{service[\'nom\']}**")
-                        if service.get(\'description\'):
-                            st.caption(service[\'description\'])
+                        st.write(f"**{service['nom']}**")
+                        if service.get('description'):
+                            st.caption(service['description'])
                     with col2:
-                        st.write(f"💰 {format_fcfa(service[\'prix\'])}")
+                        st.write(f"💰 {format_fcfa(service['prix'])}")
                     with col3:
-                        st.write(f"⏱️ {service[\'duree\']} min")
+                        st.write(f"⏱️ {service['duree']} min")
                     with col4:
-                        st.write(f"⭐ {service[\'points\']} pts")
+                        st.write(f"⭐ {service['points']} pts")
                     with col5:
-                        if service[\'actif\']:
+                        if service['actif']:
                             st.success("✅")
                         else:
                             st.error("❌")
+                    
+                    # Options de gestion du service
+                    with st.expander(f"✏️ Gérer {service['nom']}"):
+                        col_a, col_b = st.columns(2)
+                        
+                        with col_a:
+                            if st.button(f"🗑️ Supprimer", key=f"del_service_{service['id']}"):
+                                st.session_state.db.delete_service(service['id'])
+                                st.success(f"✅ Service '{service['nom']}' supprimé")
+                                st.rerun()
+                        
+                        with col_b:
+                            if st.button(f"✏️ Modifier Prix", key=f"edit_service_{service['id']}"):
+                                st.session_state[f"edit_service_mode_{service['id']}"] = True
+                        
+                        # Mode édition
+                        if st.session_state.get(f"edit_service_mode_{service['id']}", False):
+                            with st.form(f"form_edit_service_{service['id']}"):
+                                new_nom = st.text_input("Nom du service", value=service['nom'])
+                                new_prix = st.number_input("Prix (FCFA)", value=float(service['prix']), step=1000.0)
+                                new_duree = st.number_input("Durée (minutes)", value=int(service['duree']), step=5)
+                                new_points = st.number_input("Points fidélité", value=int(service['points']))
+                                new_desc = st.text_area("Description", value=service.get('description', ''))
+                                
+                                col_save, col_cancel = st.columns(2)
+                                with col_save:
+                                    if st.form_submit_button("💾 Enregistrer", use_container_width=True):
+                                        conn = st.session_state.db.get_connection()
+                                        cursor = conn.cursor()
+                                        cursor.execute("""
+                                            UPDATE services 
+                                            SET nom = ?, prix = ?, duree = ?, points = ?, description = ?
+                                            WHERE id = ?
+                                        """, (new_nom, new_prix, new_duree, new_points, new_desc, service['id']))
+                                        conn.commit()
+                                        conn.close()
+                                        st.success("✅ Service modifié !")
+                                        st.session_state[f"edit_service_mode_{service['id']}"] = False
+                                        st.rerun()
                     
                     st.markdown("---")
             else:
@@ -419,7 +458,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                         service_id = st.session_state.db.ajouter_service(
                             nom_service, prix_service, duree_service, points_service, description_service
                         )
-                        st.success(f"✅ Service \'{nom_service}\' créé avec succès !")
+                        st.success(f"✅ Service '{nom_service}' créé avec succès !")
                         st.balloons()
                         st.rerun()
                     else:
@@ -441,7 +480,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
             services = st.session_state.db.get_all_services()
             
             if not services:
-                st.warning("⚠️ Aucun service disponible. Créez d\'abord des services.")
+                st.warning("⚠️ Aucun service disponible. Créez d'abord des services.")
             else:
                 col1, col2 = st.columns(2)
                 
@@ -454,12 +493,12 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     if tel_search:
                         client_existant = st.session_state.db.get_client_by_tel(tel_search)
                         if client_existant:
-                            st.success(f"✅ Client trouvé: **{client_existant[\'nom\']}**")
+                            st.success(f"✅ Client trouvé: **{client_existant['nom']}**")
                     
                     if client_existant:
-                        nom = st.text_input("👤 Nom", value=client_existant[\'nom\'])
-                        tel = st.text_input("📞 Téléphone", value=client_existant[\'tel\'], disabled=True)
-                        vehicule = st.text_input("🚗 Véhicule", value=client_existant.get(\'vehicule\', \'\'))
+                        nom = st.text_input("👤 Nom", value=client_existant['nom'])
+                        tel = st.text_input("📞 Téléphone", value=client_existant['tel'], disabled=True)
+                        vehicule = st.text_input("🚗 Véhicule", value=client_existant.get('vehicule', ''))
                     else:
                         nom = st.text_input("👤 Nom *", placeholder="Nom du client")
                         tel = st.text_input("📞 Téléphone *", value=tel_search, placeholder="+225 XX XX XX XX")
@@ -472,8 +511,8 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     
                     service_id = st.selectbox(
                         "🔧 Service *",
-                        options=[s[\'id\'] for s in services],
-                        format_func=lambda x: f"{next(s[\'nom\'] for s in services if s[\'id\'] == x)} - {format_fcfa(next(s[\'prix\'] for s in services if s[\'id\'] == x))}"
+                        options=[s['id'] for s in services],
+                        format_func=lambda x: f"{next(s['nom'] for s in services if s['id'] == x)} - {format_fcfa(next(s['prix'] for s in services if s['id'] == x))}"
                     )
                     
                     heure = st.time_input("🕐 Heure *", value=datetime.strptime("09:00", "%H:%M").time())
@@ -483,11 +522,11 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 if st.button("✅ Confirmer la Réservation", use_container_width=True, type="primary"):
                     if nom and tel and vehicule:
                         if client_existant:
-                            client_id = client_existant[\'id\']
+                            client_id = client_existant['id']
                         else:
                             client_id = st.session_state.db.ajouter_client(nom, tel, "", vehicule)
                         
-                        service_choisi = next(s for s in services if s[\'id\'] == service_id)
+                        service_choisi = next(s for s in services if s['id'] == service_id)
                         heure_str = heure.strftime("%H:%M")
                         
                         reservation_id = st.session_state.db.ajouter_reservation(
@@ -495,7 +534,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                             service_id=service_id,
                             date=date_rdv.isoformat(),
                             heure=heure_str,
-                            montant=service_choisi[\'prix\'],
+                            montant=service_choisi['prix'],
                             notes=notes
                         )
                         
@@ -512,22 +551,22 @@ if user_role == "admin":  # PROPRIÉTAIRE
             reservations_jour = st.session_state.db.get_reservations_by_date(date_select.isoformat())
             
             if reservations_jour:
-                for res in sorted(reservations_jour, key=lambda x: x[\'heure\']):
-                    with st.expander(f"🕐 {res[\'heure\']} - {res[\'client_nom\']} ({res[\'statut\']})"):
+                for res in sorted(reservations_jour, key=lambda x: x['heure']):
+                    with st.expander(f"🕐 {res['heure']} - {res['client_nom']} ({res['statut']})"):
                         col1, col2 = st.columns(2)
                         
                         with col1:
-                            st.write(f"**Client:** {res[\'client_nom\']}")
-                            st.write(f"**Téléphone:** {res[\'client_tel\']}")
-                            st.write(f"**Véhicule:** {res[\'vehicule\']}")
+                            st.write(f"**Client:** {res['client_nom']}")
+                            st.write(f"**Téléphone:** {res['client_tel']}")
+                            st.write(f"**Véhicule:** {res['vehicule']}")
                         
                         with col2:
-                            st.write(f"**Service:** {res[\'service_nom\']}")
-                            st.write(f"**Prix:** {format_fcfa(res[\'montant\'])}")
-                            st.write(f"**Statut:** {res[\'statut\']}")
+                            st.write(f"**Service:** {res['service_nom']}")
+                            st.write(f"**Prix:** {format_fcfa(res['montant'])}")
+                            st.write(f"**Statut:** {res['statut']}")
                         
-                        if res.get(\'notes\'):
-                            st.info(f"📝 {res[\'notes\']}")
+                        if res.get('notes'):
+                            st.info(f"📝 {res['notes']}")
             else:
                 st.info("Aucune réservation ce jour")
         
@@ -547,22 +586,22 @@ if user_role == "admin":  # PROPRIÉTAIRE
             search = st.text_input("🔍 Rechercher", placeholder="Nom ou téléphone...")
             
             if search:
-                clients = [c for c in clients if search.lower() in c[\'nom\'].lower() or search in c[\'tel\']]
+                clients = [c for c in clients if search.lower() in c['nom'].lower() or search in c['tel']]
             
             st.markdown("---")
             
             for client in clients:
-                with st.expander(f"👤 {client[\'nom\']} - {client[\'tel\']} | ⭐ {client[\'points_fidelite\']} pts"):
+                with st.expander(f"👤 {client['nom']} - {client['tel']} | ⭐ {client['points_fidelite']} pts"):
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.write(f"**Téléphone:** {client[\'tel\']}")
-                        st.write(f"**Email:** {client.get(\'email\', \'N/A\')}")
-                        st.write(f"**Véhicule:** {client.get(\'vehicule\', \'N/A\')}")
+                        st.write(f"**Téléphone:** {client['tel']}")
+                        st.write(f"**Email:** {client.get('email', 'N/A')}")
+                        st.write(f"**Véhicule:** {client.get('vehicule', 'N/A')}")
                     
                     with col2:
-                        st.metric("Points fidélité", client[\'points_fidelite\'])
-                        st.metric("Total dépensé", format_fcfa(client[\'total_depense\']))
+                        st.metric("Points fidélité", client['points_fidelite'])
+                        st.metric("Total dépensé", format_fcfa(client['total_depense']))
         else:
             st.info("Aucun client enregistré")
     
@@ -597,7 +636,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    nom_proprio = st.text_input("Nom complet", value=st.session_state.user[\'username\'])
+                    nom_proprio = st.text_input("Nom complet", value=st.session_state.user['username'])
                     email_proprio = st.text_input("Email")
                 
                 with col2:
@@ -611,7 +650,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
             st.subheader("🏢 Informations Entreprise")
             
             with st.form("info_entreprise"):
-                nom_entreprise = st.text_input("Nom de l\'entreprise", value="WashAfrique Pro")
+                nom_entreprise = st.text_input("Nom de l'entreprise", value="WashAfrique Pro")
                 description_entreprise = st.text_area("Description")
                 
                 col1, col2 = st.columns(2)
@@ -628,13 +667,13 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     st.success("✅ Informations entreprise mises à jour")
         
         with sub_tabs[2]:
-            st.subheader("⏰ Horaires d\'Ouverture")
+            st.subheader("⏰ Horaires d'Ouverture")
             
             with st.form("horaires"):
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    ouverture = st.time_input("Heure d\'ouverture", value=datetime.strptime("08:00", "%H:%M").time())
+                    ouverture = st.time_input("Heure d'ouverture", value=datetime.strptime("08:00", "%H:%M").time())
                     pause_debut = st.time_input("Début pause", value=datetime.strptime("12:00", "%H:%M").time())
                 
                 with col2:
@@ -659,7 +698,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                         st.error("❌ Les mots de passe ne correspondent pas")
 
 else:  # EMPLOYÉ
-    st.header(f"👋 Bienvenue {st.session_state.user[\'username\']}")
+    st.header(f"👋 Bienvenue {st.session_state.user['username']}")
     
     tabs = st.tabs([
         "🏠 Mon Espace",
@@ -670,7 +709,34 @@ else:  # EMPLOYÉ
     
     with tabs[0]:
         st.subheader("🏠 Mon Espace Employé")
-        st.info("Dashboard employé à développer")
+        
+        # Stats du jour
+        today = date.today().isoformat()
+        pointages_today = st.session_state.db.get_pointages_employe(st.session_state.user['id'], today, today)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("📅 Date", date.today().strftime("%d/%m/%Y"))
+            
+            if pointages_today:
+                arrivee = next((p for p in pointages_today if p['type'] == 'arrivee'), None)
+                if arrivee:
+                    st.metric("✅ Arrivée", arrivee['heure'])
+                else:
+                    st.info("Pas encore pointé aujourd'hui")
+        
+        with col2:
+            heures_travail = st.session_state.db.calculer_heures_travail(st.session_state.user['id'], today)
+            st.metric("⏱️ Heures travaillées aujourd'hui", f"{heures_travail['heures_travail']}h")
+            
+            if pointages_today:
+                depart = next((p for p in pointages_today if p['type'] == 'depart'), None)
+                if depart:
+                    st.metric("🏁 Départ", depart['heure'])
+        
+        st.markdown("---")
+        st.info("💡 Utilisez l'onglet **⏰ Pointage** pour enregistrer vos arrivées et départs")
     
     with tabs[1]:
         st.subheader("⏰ Pointage")
@@ -734,8 +800,8 @@ else:  # EMPLOYÉ
         st.subheader("👤 Mon Profil")
         
         with st.form("profil_employe"):
-            st.write(f"**Nom:** {st.session_state.user[\'username\']}")
-            st.write(f"**Rôle:** {st.session_state.user[\'role\']}")
+            st.write(f"**Nom:** {st.session_state.user['username']}")
+            st.write(f"**Rôle:** {st.session_state.user['role']}")
             
             tel = st.text_input("Téléphone")
             email = st.text_input("Email")
