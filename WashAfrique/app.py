@@ -445,11 +445,11 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    prix_service = st.number_input("💰 Prix (FCFA) *", min_value=0, step=1000, value=10000)
+                    prix_service = st.number_input("💰 Prix (FCFA) *", min_value=1000, step=1000, value=10000)
                 with col2:
                     duree_service = st.number_input("⏱️ Durée (minutes) *", min_value=5, step=5, value=60)
                 with col3:
-                    points_service = st.number_input("⭐ Points fidélité", min_value=0, value=2)
+                    points_service = st.number_input("⭐ Points fidélité", min_value=1, value=2)
                 
                 submitted = st.form_submit_button("✅ Créer le Service", use_container_width=True, type="primary")
                 
@@ -703,7 +703,7 @@ else:  # EMPLOYÉ
     tabs = st.tabs([
         "🏠 Mon Espace",
         "⏰ Pointage",
-        "📋 Mes Tâches",
+        "🚗 Lancer un Service",
         "👤 Mon Profil"
     ])
     
@@ -793,8 +793,125 @@ else:  # EMPLOYÉ
             st.info("Aucun pointage ce mois")
     
     with tabs[2]:
-        st.subheader("📋 Mes Tâches du Jour")
-        st.info("Liste des tâches à développer")
+        st.subheader("🚗 Lancer un Service Client")
+        
+        st.info("💡 Enregistrez un service pour un client qui se présente")
+        
+        # Récupérer les services disponibles
+        services = st.session_state.db.get_all_services(actif_only=True)
+        
+        if not services:
+            st.warning("⚠️ Aucun service disponible. Contactez le propriétaire.")
+        else:
+            with st.form("lancer_service_employe"):
+                st.markdown("#### 👤 Informations Client")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    tel_client = st.text_input("📞 Téléphone du client *", placeholder="+225 XX XX XX XX")
+                    
+                    # Vérifier si le client existe
+                    client_existant = None
+                    if tel_client:
+                        client_existant = st.session_state.db.get_client_by_tel(tel_client)
+                        if client_existant:
+                            st.success(f"✅ Client trouvé: **{client_existant['nom']}**")
+                            nom_client = st.text_input("👤 Nom", value=client_existant['nom'], disabled=True)
+                            vehicule = st.text_input("🚗 Véhicule", value=client_existant.get('vehicule', ''))
+                        else:
+                            st.info("ℹ️ Nouveau client")
+                            nom_client = st.text_input("👤 Nom du client *", placeholder="Nom complet")
+                            vehicule = st.text_input("🚗 Véhicule *", placeholder="Marque et modèle")
+                    else:
+                        nom_client = st.text_input("👤 Nom du client *", placeholder="Nom complet")
+                        vehicule = st.text_input("🚗 Véhicule *", placeholder="Marque et modèle")
+                
+                with col2:
+                    service_id = st.selectbox(
+                        "🔧 Service demandé *",
+                        options=[s['id'] for s in services],
+                        format_func=lambda x: f"{next(s['nom'] for s in services if s['id'] == x)} - {format_fcfa(next(s['prix'] for s in services if s['id'] == x))}"
+                    )
+                    
+                    poste_id = st.selectbox(
+                        "🏢 Poste de lavage",
+                        options=[p['id'] for p in st.session_state.db.get_all_postes()],
+                        format_func=lambda x: next(p['nom'] for p in st.session_state.db.get_all_postes() if p['id'] == x)
+                    )
+                    
+                    notes = st.text_area("📝 Notes (optionnel)", placeholder="Instructions spéciales...")
+                
+                st.markdown("---")
+                
+                # Afficher le prix du service sélectionné
+                service_choisi = next(s for s in services if s['id'] == service_id)
+                st.info(f"💰 **Prix du service:** {format_fcfa(service_choisi['prix'])} | ⏱️ **Durée:** {service_choisi['duree']} min")
+                
+                submitted = st.form_submit_button("✅ Démarrer le Service", use_container_width=True, type="primary")
+                
+                if submitted:
+                    if tel_client and nom_client and vehicule:
+                        # Créer ou récupérer le client
+                        if client_existant:
+                            client_id = client_existant['id']
+                        else:
+                            client_id = st.session_state.db.ajouter_client(nom_client, tel_client, "", vehicule)
+                        
+                        # Créer la réservation immédiate
+                        now = datetime.now()
+                        reservation_id = st.session_state.db.ajouter_reservation(
+                            client_id=client_id,
+                            service_id=service_id,
+                            date=now.strftime("%Y-%m-%d"),
+                            heure=now.strftime("%H:%M"),
+                            montant=service_choisi['prix'],
+                            poste_id=poste_id,
+                            employe_id=None,  # On peut ajouter l'ID de l'employé si nécessaire
+                            notes=notes
+                        )
+                        
+                        # Ajouter les points de fidélité
+                        st.session_state.db.update_client_points(client_id, service_choisi['points'], "add")
+                        
+                        st.success(f"✅ Service démarré avec succès !")
+                        st.balloons()
+                        
+                        # Afficher le récapitulatif
+                        st.markdown(f"""
+                        ### 📋 Récapitulatif
+                        - **Client:** {nom_client}
+                        - **Véhicule:** {vehicule}
+                        - **Service:** {service_choisi['nom']}
+                        - **Prix:** {format_fcfa(service_choisi['prix'])}
+                        - **Points gagnés:** +{service_choisi['points']} points
+                        - **Réservation N°:** {reservation_id:05d}
+                        """)
+                        
+                        st.info("💡 Le client peut maintenant aller au poste de lavage")
+                    else:
+                        st.error("⚠️ Veuillez remplir tous les champs obligatoires")
+            
+            st.markdown("---")
+            st.subheader("📊 Services en Cours Aujourd'hui")
+            
+            # Afficher les réservations du jour
+            reservations_today = st.session_state.db.get_reservations_by_date(date.today().isoformat())
+            
+            if reservations_today:
+                for res in reservations_today:
+                    with st.expander(f"🚗 {res['client_nom']} - {res['service_nom']} ({res['heure']})"):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**Client:** {res['client_nom']}")
+                            st.write(f"**Téléphone:** {res['client_tel']}")
+                            st.write(f"**Véhicule:** {res['vehicule']}")
+                        with col2:
+                            st.write(f"**Service:** {res['service_nom']}")
+                            st.write(f"**Prix:** {format_fcfa(res['montant'])}")
+                            st.write(f"**Statut:** {res['statut']}")
+            else:
+                st.info("Aucun service en cours aujourd'hui")
     
     with tabs[3]:
         st.subheader("👤 Mon Profil")
