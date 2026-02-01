@@ -152,9 +152,10 @@ if not check_authentication():
     st.stop()
 
 # ===== NAVIGATION HORIZONTALE =====
+nom_entreprise = st.session_state.db.get_parametre('nom_entreprise', 'WashAfrique Pro')
 st.markdown(f"""
     <div class="nav-header">
-        <h2 style="color: white; margin: 0;">🚗 WashAfrique Pro | {st.session_state.user["username"]} ({st.session_state.user["role"]})</h2>
+        <h2 style="color: white; margin: 0;">🚗 {nom_entreprise} | {st.session_state.user["username"]} ({st.session_state.user["role"]})</h2>
     </div>
 """, unsafe_allow_html=True)
 
@@ -810,22 +811,35 @@ if user_role == "admin":  # PROPRIÉTAIRE
         with sub_tabs[1]:
             st.subheader("🏢 Informations Entreprise")
             
+            # Récupérer les infos actuelles
+            info_entreprise = st.session_state.db.get_info_entreprise()
+            
             with st.form("info_entreprise"):
-                nom_entreprise = st.text_input("Nom de l'entreprise", value="WashAfrique Pro")
-                description_entreprise = st.text_area("Description")
+                nom_entreprise_input = st.text_input("Nom de l'entreprise", value=info_entreprise['nom'])
+                description_entreprise = st.text_area("Description", value=info_entreprise['description'])
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    tel_entreprise = st.text_input("Téléphone entreprise")
-                    email_entreprise = st.text_input("Email entreprise")
+                    tel_entreprise = st.text_input("Téléphone entreprise", value=info_entreprise['telephone'])
+                    email_entreprise = st.text_input("Email entreprise", value=info_entreprise['email'])
                 
                 with col2:
-                    adresse_entreprise = st.text_input("Adresse complète")
-                    site_web = st.text_input("Site web (optionnel)")
+                    adresse_entreprise = st.text_input("Adresse complète", value=info_entreprise['adresse'])
+                    site_web = st.text_input("Site web (optionnel)", value=info_entreprise['site_web'])
                 
                 if st.form_submit_button("💾 Enregistrer", use_container_width=True):
+                    st.session_state.db.set_info_entreprise(
+                        nom=nom_entreprise_input,
+                        description=description_entreprise,
+                        telephone=tel_entreprise,
+                        email=email_entreprise,
+                        adresse=adresse_entreprise,
+                        site_web=site_web
+                    )
                     st.success("✅ Informations entreprise mises à jour")
+                    st.balloons()
+                    st.rerun()
         
         with sub_tabs[2]:
             st.subheader("⏰ Horaires d'Ouverture")

@@ -979,3 +979,52 @@ class Database:
         
         conn.close()
         return reservations
+    
+    # ===== GESTION PARAMÈTRES ENTREPRISE =====
+    
+    def get_parametre(self, cle: str, default: str = None) -> Optional[str]:
+        """Récupère un paramètre depuis la base"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT valeur FROM parametres WHERE cle = ?", (cle,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return result['valeur']
+        return default
+    
+    def set_parametre(self, cle: str, valeur: str):
+        """Enregistre ou met à jour un paramètre"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO parametres (cle, valeur)
+            VALUES (?, ?)
+        """, (cle, valeur))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_info_entreprise(self) -> Dict:
+        """Récupère toutes les informations de l'entreprise"""
+        return {
+            'nom': self.get_parametre('nom_entreprise', 'WashAfrique Pro'),
+            'description': self.get_parametre('description_entreprise', ''),
+            'telephone': self.get_parametre('tel_entreprise', ''),
+            'email': self.get_parametre('email_entreprise', ''),
+            'adresse': self.get_parametre('adresse_entreprise', ''),
+            'site_web': self.get_parametre('site_web_entreprise', '')
+        }
+    
+    def set_info_entreprise(self, nom: str, description: str, telephone: str, 
+                           email: str, adresse: str, site_web: str):
+        """Enregistre les informations de l'entreprise"""
+        self.set_parametre('nom_entreprise', nom)
+        self.set_parametre('description_entreprise', description)
+        self.set_parametre('tel_entreprise', telephone)
+        self.set_parametre('email_entreprise', email)
+        self.set_parametre('adresse_entreprise', adresse)
+        self.set_parametre('site_web_entreprise', site_web)
