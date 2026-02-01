@@ -964,9 +964,11 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT ps.*, r.date, r.service_nom, r.client_nom, r.vehicule
+            SELECT ps.*, r.date, s.nom as service_nom, c.nom as client_nom, c.vehicule
             FROM photos_services ps
             JOIN reservations r ON ps.reservation_id = r.id
+            JOIN services s ON r.service_id = s.id
+            JOIN clients c ON r.client_id = c.id
             ORDER BY ps.date_ajout DESC
             LIMIT ?
         """, (limit,))
