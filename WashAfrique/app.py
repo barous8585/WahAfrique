@@ -1127,29 +1127,62 @@ else:  # EMPLOYÉ
                             
                             with col_photo1:
                                 st.write("📸 **Photo AVANT**")
-                                photo_avant = st.file_uploader(
-                                    "Upload photo avant",
-                                    type=['png', 'jpg', 'jpeg'],
-                                    key=f"photo_avant_{res['id']}"
-                                )
+                                
                                 if photos_existantes and photos_existantes.get('photo_avant'):
                                     st.success("✅ Photo avant déjà ajoutée")
+                                    st.image(photos_existantes['photo_avant'], width=200)
+                                else:
+                                    # Choix entre caméra et upload
+                                    mode_avant = st.radio(
+                                        "Mode de capture",
+                                        ["📷 Prendre avec caméra", "📁 Upload fichier"],
+                                        key=f"mode_avant_{res['id']}"
+                                    )
+                                    
+                                    if mode_avant == "📷 Prendre avec caméra":
+                                        photo_avant = st.camera_input(
+                                            "Prendre photo AVANT",
+                                            key=f"camera_avant_{res['id']}"
+                                        )
+                                    else:
+                                        photo_avant = st.file_uploader(
+                                            "Upload photo avant",
+                                            type=['png', 'jpg', 'jpeg'],
+                                            key=f"photo_avant_{res['id']}"
+                                        )
                             
                             with col_photo2:
                                 st.write("📸 **Photo APRÈS**")
-                                photo_apres = st.file_uploader(
-                                    "Upload photo après",
-                                    type=['png', 'jpg', 'jpeg'],
-                                    key=f"photo_apres_{res['id']}"
-                                )
+                                
                                 if photos_existantes and photos_existantes.get('photo_apres'):
                                     st.success("✅ Photo après déjà ajoutée")
+                                    st.image(photos_existantes['photo_apres'], width=200)
+                                else:
+                                    # Choix entre caméra et upload
+                                    mode_apres = st.radio(
+                                        "Mode de capture",
+                                        ["📷 Prendre avec caméra", "📁 Upload fichier"],
+                                        key=f"mode_apres_{res['id']}"
+                                    )
+                                    
+                                    if mode_apres == "📷 Prendre avec caméra":
+                                        photo_apres = st.camera_input(
+                                            "Prendre photo APRÈS",
+                                            key=f"camera_apres_{res['id']}"
+                                        )
+                                    else:
+                                        photo_apres = st.file_uploader(
+                                            "Upload photo après",
+                                            type=['png', 'jpg', 'jpeg'],
+                                            key=f"photo_apres_{res['id']}"
+                                        )
                             
                             # Bouton pour sauvegarder les photos
-                            if photo_avant or photo_apres:
+                            if 'photo_avant' in locals() and photo_avant or 'photo_apres' in locals() and photo_apres:
+                                st.markdown("---")
                                 if st.button(f"💾 Sauvegarder les photos", key=f"save_photos_{res['id']}", use_container_width=True):
-                                    photo_avant_bytes = photo_avant.read() if photo_avant else None
-                                    photo_apres_bytes = photo_apres.read() if photo_apres else None
+                                    photo_avant_bytes = photo_avant.read() if 'photo_avant' in locals() and photo_avant else None
+                                    photo_apres_bytes = photo_apres.read() if 'photo_apres' in locals() and photo_apres else None
                                     
                                     st.session_state.db.ajouter_photos_service(
                                         res['id'],
@@ -1158,6 +1191,7 @@ else:  # EMPLOYÉ
                                         employe_id=st.session_state.user['id']
                                     )
                                     st.success("✅ Photos sauvegardées !")
+                                    st.balloons()
                                     st.rerun()
                             
                             st.markdown("---")
