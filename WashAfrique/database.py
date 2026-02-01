@@ -926,6 +926,10 @@ class Database:
     
     def get_photos_service(self, reservation_id: int, type_photo: str = None) -> List[Dict]:
         """Récupère les photos d'un service (toutes ou filtrées par type)"""
+        # Validation de l'ID
+        if not reservation_id or reservation_id is None:
+            return []
+        
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -1028,3 +1032,71 @@ class Database:
         self.set_parametre('email_entreprise', email)
         self.set_parametre('adresse_entreprise', adresse)
         self.set_parametre('site_web_entreprise', site_web)
+    
+    # ===== SUPPRESSION HISTORIQUE =====
+    
+    def supprimer_historique_services(self, date_avant: str = None):
+        """Supprime l'historique des services (optionnel: avant une date)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if date_avant:
+            # Supprimer services avant une date spécifique
+            cursor.execute("DELETE FROM reservations WHERE date_reservation < ?", (date_avant,))
+            cursor.execute("DELETE FROM paiements WHERE DATE(date_paiement) < ?", (date_avant,))
+        else:
+            # Supprimer TOUT l'historique
+            cursor.execute("DELETE FROM reservations")
+            cursor.execute("DELETE FROM paiements")
+            cursor.execute("DELETE FROM photos_services")
+            cursor.execute("DELETE FROM historique_fidelite")
+        
+        lignes_supprimees = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return lignes_supprimees
+    
+    def reinitialiser_ca(self):
+        """Réinitialise le chiffre d'affaires (supprime tous les paiements)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM paiements")
+        nb_paiements = cursor.rowcount
+        
+        # Réinitialiser montant_paye des réservations
+        cursor.execute("UPDATE reservations SET montant_paye = 0, statut = 'en_attente'")
+        
+        conn.commit()
+        conn.close()
+        return nb_paiements
+    
+    def reinitialiser_clients(self):
+        """Réinitialise points fidélité et total dépenses des clients"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("UPDATE clients SET points_fidelite = 0, total_depense = 0")
+        cursor.execute("DELETE FROM historique_fidelite")
+        
+        conn.commit()
+        conn.close()
+    
+    def archiver_et_reinitialiser(self, nom_archive: str = None):
+        """Archive les données actuelles puis réinitialise tout"""
+        import shutil
+        from datetime import datetime
+        
+        # Créer nom archive avec timestamp
+        if not nom_archive:
+            nom_archive = f"washafrique_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        
+        # Copier la base actuelle vers archive
+        shutil.copy2(self.db_name, nom_archive)
+        
+        # Réinitialiser
+        self.reinitialiser_ca()
+        self.supprimer_historique_services()
+        self.reinitialiser_clients()
+        
+        return nom_archive

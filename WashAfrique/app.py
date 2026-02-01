@@ -789,7 +789,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
     with tabs[8]:
         st.header("⚙️ Mon Profil et Paramètres")
         
-        sub_tabs = st.tabs(["👤 Informations", "🏢 Entreprise", "⏰ Horaires", "🔐 Sécurité"])
+        sub_tabs = st.tabs(["👤 Informations", "🏢 Entreprise", "⏰ Horaires", "🔐 Sécurité", "🗑️ Gestion Données"])
         
         with sub_tabs[0]:
             st.subheader("👤 Mes Informations")
@@ -871,6 +871,57 @@ if user_role == "admin":  # PROPRIÉTAIRE
                         st.success("✅ Mot de passe changé avec succès")
                     else:
                         st.error("❌ Les mots de passe ne correspondent pas")
+        
+        with sub_tabs[4]:
+            st.subheader("🗑️ Gestion des Données")
+            
+            st.warning("⚠️ **ATTENTION** : Ces actions sont irréversibles ! Une archive sera créée avant suppression.")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("### 📊 Réinitialiser CA")
+                st.info("Supprime tous les paiements et réinitialise le chiffre d'affaires à 0 FCFA")
+                
+                if st.button("🔄 Réinitialiser CA", use_container_width=True, type="secondary"):
+                    with st.spinner("Réinitialisation en cours..."):
+                        nb_paiements = st.session_state.db.reinitialiser_ca()
+                        st.success(f"✅ CA réinitialisé ! {nb_paiements} paiement(s) supprimé(s)")
+                        st.balloons()
+                
+                st.markdown("---")
+                
+                st.markdown("### 🧹 Supprimer Historique Services")
+                st.info("Supprime toutes les réservations et l'historique des services")
+                
+                if st.button("🗑️ Supprimer Historique", use_container_width=True, type="secondary"):
+                    with st.spinner("Suppression en cours..."):
+                        nb_lignes = st.session_state.db.supprimer_historique_services()
+                        st.success(f"✅ Historique supprimé ! {nb_lignes} enregistrement(s) effacé(s)")
+                        st.balloons()
+            
+            with col2:
+                st.markdown("### 👥 Réinitialiser Clients")
+                st.info("Remet à zéro les points fidélité et total dépenses de tous les clients")
+                
+                if st.button("🔄 Réinitialiser Clients", use_container_width=True, type="secondary"):
+                    with st.spinner("Réinitialisation en cours..."):
+                        st.session_state.db.reinitialiser_clients()
+                        st.success("✅ Clients réinitialisés ! Points et dépenses remis à zéro")
+                        st.balloons()
+                
+                st.markdown("---")
+                
+                st.markdown("### 💾 Archive + Réinitialisation Complète")
+                st.info("Crée une copie de sauvegarde puis réinitialise TOUT (CA + Services + Clients)")
+                
+                if st.button("🚀 TOUT Réinitialiser", use_container_width=True, type="primary"):
+                    with st.spinner("Archivage et réinitialisation..."):
+                        nom_archive = st.session_state.db.archiver_et_reinitialiser()
+                        st.success(f"✅ Archive créée : `{nom_archive}`")
+                        st.success("✅ Toutes les données ont été réinitialisées !")
+                        st.balloons()
+                        st.rerun()
 
 else:  # EMPLOYÉ
     st.header(f"👋 Bienvenue {st.session_state.user['username']}")
