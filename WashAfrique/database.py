@@ -233,8 +233,8 @@ class Database:
             CREATE TABLE IF NOT EXISTS photos_services (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 reservation_id INTEGER NOT NULL,
-                photo_avant BLOB,
-                photo_apres BLOB,
+                type_photo TEXT NOT NULL,
+                photo_data BLOB NOT NULL,
                 date_ajout TEXT DEFAULT CURRENT_TIMESTAMP,
                 employe_id INTEGER,
                 notes TEXT,
@@ -909,77 +909,73 @@ class Database:
         }
     
     # ===== GESTION PHOTOS AVANT/APRÈS =====
-    def ajouter_photos_service(self, reservation_id: int, photo_avant: bytes = None, photo_apres: bytes = None, employe_id: int = None, notes: str = "") -> int:
-        """Ajoute ou met à jour les photos avant/après d'un service"""
+    def ajouter_photo_service(self, reservation_id: int, type_photo: str, photo_data: bytes, employe_id: int = None, notes: str = "") -> int:
+        """Ajoute une photo (avant ou après) pour un service"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Vérifier si des photos existent déjà pour cette réservation
-        cursor.execute("SELECT id FROM photos_services WHERE reservation_id = ?", (reservation_id,))
-        existing = cursor.fetchone()
-        
-        if existing:
-            # Mettre à jour
-            updates = []
-            params = []
-            
-            if photo_avant:
-                updates.append("photo_avant = ?")
-                params.append(photo_avant)
-            if photo_apres:
-                updates.append("photo_apres = ?")
-                params.append(photo_apres)
-            if notes:
-                updates.append("notes = ?")
-                params.append(notes)
-            
-            if updates:
-                params.append(reservation_id)
-                query = f"UPDATE photos_services SET {', '.join(updates)} WHERE reservation_id = ?"
-                cursor.execute(query, params)
-                photo_id = existing['id']
-        else:
-            # Créer nouveau
-            cursor.execute(
-                "INSERT INTO photos_services (reservation_id, photo_avant, photo_apres, employe_id, notes) VALUES (?, ?, ?, ?, ?)",
-                (reservation_id, photo_avant, photo_apres, employe_id, notes)
-            )
-            photo_id = cursor.lastrowid
+        cursor.execute(
+            "INSERT INTO photos_services (reservation_id, type_photo, photo_data, employe_id, notes) VALUES (?, ?, ?, ?, ?)",
+            (reservation_id, type_photo, photo_data, employe_id, notes)
+        )
+        photo_id = cursor.lastrowid
         
         conn.commit()
         conn.close()
         return photo_id
     
-    def get_photos_service(self, reservation_id: int) -> Dict:
-        """Récupère les photos avant/après d'un service"""
+    def get_photos_service(self, reservation_id: int, type_photo: str = None) -> List[Dict]:
+        """Récupère les photos d'un service (toutes ou filtrées par type)"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM photos_services WHERE reservation_id = ?", (reservation_id,))
-        photos = cursor.fetchone()
-        conn.close()
-        return dict(photos) if photos else None
-    
-    def get_toutes_photos_services(self, limit: int = 50) -> List[Dict]:
-        """Récupère toutes les photos des services (pour galerie)"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT ps.*, r.date, s.nom as service_nom, c.nom as client_nom, c.vehicule
-            FROM photos_services ps
-            JOIN reservations r ON ps.reservation_id = r.id
-            JOIN services s ON r.service_id = s.id
-            JOIN clients c ON r.client_id = c.id
-            ORDER BY ps.date_ajout DESC
-            LIMIT ?
-        """, (limit,))
+        
+        if type_photo:
+            cursor.execute(
+                "SELECT * FROM photos_services WHERE reservation_id = ? AND type_photo = ? ORDER BY date_ajout",
+                (reservation_id, type_photo)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM photos_services WHERE reservation_id = ? ORDER BY type_photo, date_ajout",
+                (reservation_id,)
+            )
+        
         photos = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return photos
     
-    def supprimer_photos_service(self, photo_id: int):
-        """Supprime les photos d'un service"""
+    def supprimer_photo_service(self, photo_id: int):
+        """Supprime une photo spécifique"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM photos_services WHERE id = ?", (photo_id,))
         conn.commit()
         conn.close()
+    
+    def get_toutes_photos_services(self, limit: int = 100) -> List[Dict]:
+        """Récupère toutes les photos des services (pour galerie) groupées par réservation"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT ps.reservation_id, r.date, s.nom as service_nom, c.nom as client_nom, c.vehicule
+            FROM photos_services ps
+            JOIN reservations r ON ps.reservation_id = r.id
+            JOIN services s ON r.service_id = s.id
+            JOIN clients c ON r.client_id = c.id
+            ORDER BY r.date DESC
+            LIMIT ?
+        """, (limit,))
+        reservations = [dict(row) for row in cursor.fetchall()]
+        
+        # Pour chaque réservation, récupérer toutes les photos
+        for res in reservations:
+            cursor.execute("""
+                SELECT id, type_photo, photo_data, date_ajout
+                FROM photos_services
+                WHERE reservation_id = ?
+                ORDER BY type_photo, date_ajout
+            """, (res['reservation_id'],))
+            res['photos'] = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        return reservations
