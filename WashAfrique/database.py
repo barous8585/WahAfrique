@@ -572,7 +572,7 @@ class Database:
         
         # Revenus aujourd'hui - Utilise la table paiements
         cursor.execute(
-            "SELECT SUM(montant) as total FROM paiements WHERE date = ?",
+            "SELECT SUM(montant) as total FROM paiements WHERE DATE(date_paiement) = ?",
             (today,)
         )
         revenus_today = cursor.fetchone()['total'] or 0
@@ -617,11 +617,10 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT date, SUM(montant_paye) as revenus, COUNT(*) as nb_rdv
-            FROM reservations
-            WHERE statut != 'annule'
-            GROUP BY date
-            ORDER BY date DESC
+            SELECT DATE(date_paiement) as date, SUM(montant) as revenus, COUNT(*) as nb_rdv
+            FROM paiements
+            GROUP BY DATE(date_paiement)
+            ORDER BY DATE(date_paiement) DESC
             LIMIT ?
         """, (limit,))
         data = [dict(row) for row in cursor.fetchall()]
@@ -632,10 +631,10 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.nom, COUNT(*) as nb_reservations, SUM(r.montant_paye) as revenus
-            FROM reservations r
+            SELECT s.nom, COUNT(*) as nb_reservations, SUM(p.montant) as revenus
+            FROM paiements p
+            JOIN reservations r ON p.reservation_id = r.id
             JOIN services s ON r.service_id = s.id
-            WHERE r.statut != 'annule'
             GROUP BY r.service_id
             ORDER BY nb_reservations DESC
         """)
