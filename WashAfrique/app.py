@@ -253,7 +253,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
         with sub_tabs[0]:
             st.subheader("📋 Tous les Employés")
             
-            employes = st.session_state.db.get_all_employes(actif_only=False)
+            employes = st.session_state.db.get_all_employes(actif_only=True)
             
             if employes:
                 for emp in employes:
@@ -370,7 +370,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
         with sub_tabs[0]:
             st.subheader("📋 Liste de vos Services")
             
-            services = st.session_state.db.get_all_services(actif_only=False)
+            services = st.session_state.db.get_all_services(actif_only=True)
             
             if services:
                 for service in services:
