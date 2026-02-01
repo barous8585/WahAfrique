@@ -698,7 +698,104 @@ if user_role == "admin":  # PROPRIÉTAIRE
     with tabs[7]:
         st.header("📊 Rapports et Statistiques")
         
-        st.info("Module rapports à développer complètement")
+        sub_tabs_rapports = st.tabs(["📈 Statistiques", "📸 Galerie Photos", "📄 Exports"])
+        
+        with sub_tabs_rapports[0]:
+            st.subheader("📈 Statistiques Générales")
+            st.info("Module statistiques à développer")
+        
+        with sub_tabs_rapports[1]:
+            st.subheader("📸 Galerie Photos Avant/Après")
+            st.info("💡 Photos de vos services pour TikTok, Instagram, Facebook")
+            
+            # Récupérer toutes les photos
+            toutes_photos = st.session_state.db.get_toutes_photos_services(limit=100)
+            
+            if toutes_photos:
+                st.write(f"**{len(toutes_photos)} photo(s) disponible(s)**")
+                
+                # Filtres
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    filtre_date = st.date_input("Filtrer par date", value=None, key="filtre_date_photos")
+                with col_f2:
+                    filtre_client = st.text_input("Filtrer par client", placeholder="Nom du client")
+                
+                st.markdown("---")
+                
+                # Afficher les photos en grille
+                cols_per_row = 2
+                for i in range(0, len(toutes_photos), cols_per_row):
+                    cols = st.columns(cols_per_row)
+                    
+                    for idx, col in enumerate(cols):
+                        if i + idx < len(toutes_photos):
+                            photo = toutes_photos[i + idx]
+                            
+                            with col:
+                                with st.expander(f"🚗 {photo['client_nom']} - {photo['date']}"):
+                                    st.write(f"**Service:** {photo['service_nom']}")
+                                    st.write(f"**Véhicule:** {photo['vehicule']}")
+                                    st.write(f"**Date:** {photo['date']}")
+                                    
+                                    if photo.get('notes'):
+                                        st.caption(f"📝 {photo['notes']}")
+                                    
+                                    st.markdown("---")
+                                    
+                                    col_avant, col_apres = st.columns(2)
+                                    
+                                    with col_avant:
+                                        st.write("**📸 AVANT**")
+                                        if photo.get('photo_avant'):
+                                            st.image(photo['photo_avant'], use_container_width=True)
+                                        else:
+                                            st.info("Pas de photo")
+                                    
+                                    with col_apres:
+                                        st.write("**📸 APRÈS**")
+                                        if photo.get('photo_apres'):
+                                            st.image(photo['photo_apres'], use_container_width=True)
+                                        else:
+                                            st.info("Pas de photo")
+                                    
+                                    st.markdown("---")
+                                    
+                                    # Boutons d'action
+                                    col_dl1, col_dl2, col_del = st.columns([2, 2, 1])
+                                    
+                                    with col_dl1:
+                                        if photo.get('photo_avant'):
+                                            st.download_button(
+                                                "⬇️ Avant",
+                                                data=photo['photo_avant'],
+                                                file_name=f"avant_{photo['client_nom']}_{photo['date']}.jpg",
+                                                mime="image/jpeg",
+                                                key=f"dl_avant_{photo['id']}"
+                                            )
+                                    
+                                    with col_dl2:
+                                        if photo.get('photo_apres'):
+                                            st.download_button(
+                                                "⬇️ Après",
+                                                data=photo['photo_apres'],
+                                                file_name=f"apres_{photo['client_nom']}_{photo['date']}.jpg",
+                                                mime="image/jpeg",
+                                                key=f"dl_apres_{photo['id']}"
+                                            )
+                                    
+                                    with col_del:
+                                        if st.button("🗑️", key=f"del_photo_{photo['id']}"):
+                                            st.session_state.db.supprimer_photos_service(photo['id'])
+                                            st.success("✅ Photos supprimées")
+                                            st.rerun()
+            else:
+                st.info("Aucune photo disponible pour le moment")
+                st.write("💡 Les employés peuvent ajouter des photos lors des services en cours")
+        
+        with sub_tabs_rapports[2]:
+            st.subheader("📄 Exports")
+            st.info("Module exports à développer")
     
     # ===== ONGLET 9: PROFIL PROPRIÉTAIRE =====
     with tabs[8]:
@@ -1021,6 +1118,50 @@ else:  # EMPLOYÉ
                                 st.rerun()
                         
                         elif res['statut'] == 'en_cours':
+                            st.info("🎬 Service en cours - Ajoutez les photos avant/après !")
+                            
+                            # Vérifier si des photos existent déjà
+                            photos_existantes = st.session_state.db.get_photos_service(res['id'])
+                            
+                            col_photo1, col_photo2 = st.columns(2)
+                            
+                            with col_photo1:
+                                st.write("📸 **Photo AVANT**")
+                                photo_avant = st.file_uploader(
+                                    "Upload photo avant",
+                                    type=['png', 'jpg', 'jpeg'],
+                                    key=f"photo_avant_{res['id']}"
+                                )
+                                if photos_existantes and photos_existantes.get('photo_avant'):
+                                    st.success("✅ Photo avant déjà ajoutée")
+                            
+                            with col_photo2:
+                                st.write("📸 **Photo APRÈS**")
+                                photo_apres = st.file_uploader(
+                                    "Upload photo après",
+                                    type=['png', 'jpg', 'jpeg'],
+                                    key=f"photo_apres_{res['id']}"
+                                )
+                                if photos_existantes and photos_existantes.get('photo_apres'):
+                                    st.success("✅ Photo après déjà ajoutée")
+                            
+                            # Bouton pour sauvegarder les photos
+                            if photo_avant or photo_apres:
+                                if st.button(f"💾 Sauvegarder les photos", key=f"save_photos_{res['id']}", use_container_width=True):
+                                    photo_avant_bytes = photo_avant.read() if photo_avant else None
+                                    photo_apres_bytes = photo_apres.read() if photo_apres else None
+                                    
+                                    st.session_state.db.ajouter_photos_service(
+                                        res['id'],
+                                        photo_avant=photo_avant_bytes,
+                                        photo_apres=photo_apres_bytes,
+                                        employe_id=st.session_state.user['id']
+                                    )
+                                    st.success("✅ Photos sauvegardées !")
+                                    st.rerun()
+                            
+                            st.markdown("---")
+                            
                             if st.button(f"✅ Marquer comme Terminé", key=f"finish_{res['id']}", use_container_width=True, type="primary"):
                                 st.session_state.db.update_reservation_statut(res['id'], 'termine')
                                 st.success("✅ Service terminé !")
