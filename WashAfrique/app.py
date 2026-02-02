@@ -524,7 +524,19 @@ if user_role == "admin":  # PROPRIÉTAIRE
         
         with sub_tabs[2]:
             st.subheader("🏷️ Catégories de Services")
-            st.info("Fonctionnalité de catégorisation à développer")
+            
+            st.info("💡 Organisez vos services par catégories pour meilleure clarté")
+            
+            st.markdown("""
+            ### 📋 Catégories suggérées :
+            - 🚗 **Lavage Basique** (Lavage Express, Lavage Standard)
+            - ✨ **Lavage Premium** (Lavage Complet, Lavage Luxe)
+            - 🔧 **Entretien** (Cirage, Polissage)
+            - 🎨 **Esthétique** (Rénovation Phares, Traitement Cuir)
+            
+            **Note** : Les catégories aident à organiser votre catalogue de services  
+            Fonctionnalité avancée disponible sur demande
+            """)
     
     # ===== ONGLET 4: RÉSERVATIONS =====
     with tabs[3]:
@@ -744,13 +756,148 @@ if user_role == "admin":  # PROPRIÉTAIRE
     with tabs[5]:
         st.header("💰 Gestion des Paiements")
         
-        st.info("Module paiements à développer complètement")
+        sub_tabs_paie = st.tabs(["📋 Historique", "📊 Statistiques", "🔍 Recherche"])
+        
+        with sub_tabs_paie[0]:
+            st.subheader("📋 Historique des Paiements")
+            
+            paiements = st.session_state.db.get_all_paiements()
+            
+            if paiements:
+                st.success(f"💰 **{len(paiements)} paiements enregistrés** | Total: {format_fcfa(sum(p['montant'] for p in paiements))}")
+                
+                # Afficher les 20 derniers
+                for p in paiements[:20]:
+                    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+                    
+                    with col1:
+                        st.write(f"**{p.get('client_nom', 'N/A')}**")
+                        st.caption(f"🔧 {p.get('service_nom', 'N/A')}")
+                    
+                    with col2:
+                        st.write(f"💰 **{format_fcfa(p['montant'])}**")
+                        methode = p.get('methode_paiement', 'N/A')
+                        emoji = "💵" if methode == "Espèces" else "💳" if methode == "Carte" else "📱"
+                        st.caption(f"{emoji} {methode}")
+                    
+                    with col3:
+                        date_paie = p['date_paiement'][:10] if p.get('date_paiement') else 'N/A'
+                        heure_paie = p['date_paiement'][11:16] if len(p.get('date_paiement', '')) > 10 else ''
+                        st.write(f"📅 {date_paie}")
+                        st.caption(f"🕐 {heure_paie}")
+                    
+                    with col4:
+                        if p.get('notes'):
+                            st.caption(f"📝 {p['notes']}")
+                    
+                    st.markdown("---")
+                
+                if len(paiements) > 20:
+                    st.info(f"📌 Affichage limité aux 20 derniers paiements (total: {len(paiements)})")
+            else:
+                st.info("Aucun paiement enregistré")
+        
+        with sub_tabs_paie[1]:
+            st.subheader("📊 Statistiques Paiements")
+            
+            paiements = st.session_state.db.get_all_paiements()
+            
+            if paiements:
+                # KPIs
+                col1, col2, col3 = st.columns(3)
+                
+                total = sum(p['montant'] for p in paiements)
+                moyenne = total / len(paiements)
+                
+                with col1:
+                    st.metric("💰 Total Encaissé", format_fcfa(total))
+                
+                with col2:
+                    st.metric("📊 Nombre Paiements", len(paiements))
+                
+                with col3:
+                    st.metric("💵 Montant Moyen", format_fcfa(moyenne))
+                
+                st.markdown("---")
+                
+                # Répartition par méthode
+                st.markdown("### 💳 Répartition par Méthode")
+                
+                methodes = {}
+                for p in paiements:
+                    m = p.get('methode_paiement', 'Non défini')
+                    methodes[m] = methodes.get(m, {'count': 0, 'montant': 0})
+                    methodes[m]['count'] += 1
+                    methodes[m]['montant'] += p['montant']
+                
+                for methode, data in methodes.items():
+                    col_m, col_c, col_t = st.columns([2, 1, 2])
+                    
+                    emoji = "💵" if methode == "Espèces" else "💳" if methode == "Carte" else "📱"
+                    
+                    with col_m:
+                        st.write(f"{emoji} **{methode}**")
+                    
+                    with col_c:
+                        st.write(f"{data['count']} fois")
+                    
+                    with col_t:
+                        pourcent = (data['montant'] / total * 100) if total > 0 else 0
+                        st.write(f"**{format_fcfa(data['montant'])}** ({pourcent:.1f}%)")
+            else:
+                st.info("Aucune donnée disponible")
+        
+        with sub_tabs_paie[2]:
+            st.subheader("🔍 Recherche Paiement")
+            
+            col_search, col_filter = st.columns(2)
+            
+            with col_search:
+                search_client = st.text_input("🔎 Rechercher client", placeholder="Nom du client...")
+            
+            with col_filter:
+                methode_filter = st.selectbox(
+                    "💳 Filtrer par méthode",
+                    ["Toutes", "Espèces", "Carte", "Mobile Money"]
+                )
+            
+            paiements = st.session_state.db.get_all_paiements()
+            
+            # Filtrage
+            if search_client:
+                paiements = [p for p in paiements if search_client.lower() in p.get('client_nom', '').lower()]
+            
+            if methode_filter != "Toutes":
+                paiements = [p for p in paiements if p.get('methode_paiement') == methode_filter]
+            
+            if paiements:
+                st.success(f"✅ **{len(paiements)} résultat(s)** | Total: {format_fcfa(sum(p['montant'] for p in paiements))}")
+                
+                for p in paiements[:10]:
+                    st.markdown(f"""
+                    **{p.get('client_nom', 'N/A')}** | {p.get('service_nom', 'N/A')}  
+                    💰 {format_fcfa(p['montant'])} | 📅 {p['date_paiement'][:10]} | 💳 {p.get('methode_paiement', 'N/A')}
+                    """)
+                    st.markdown("---")
+            else:
+                st.info("Aucun résultat")
     
     # ===== ONGLET 7: STOCK =====
     with tabs[6]:
         st.header("📦 Gestion du Stock")
         
-        st.info("Module stock à développer complètement")
+        st.warning("⚠️ **Module Stock** - Fonctionnalités de base disponibles")
+        
+        st.markdown("""
+        ### 🔧 Fonctionnalités à venir :
+        - 📦 Inventaire produits (shampoing, cire, etc.)
+        - ➕ Entr ées de stock (achats)
+        - ➖ Sorties de stock (utilisation services)
+        - 🚨 Alertes stock bas
+        - 📊 Historique mouvements
+        
+        **Note** : Contactez le développeur pour activation complète
+        """)
     
     # ===== ONGLET 8: RAPPORTS =====
     with tabs[7]:
