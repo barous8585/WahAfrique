@@ -342,21 +342,78 @@ if user_role == "admin":  # PROPRIÉTAIRE
             pointages_jour = st.session_state.db.get_pointages_jour(date_pointage.isoformat())
             
             if pointages_jour:
-                st.write(f"**{len(pointages_jour)} pointages ce jour**")
+                # Regrouper les pointages par employé
+                from collections import defaultdict
+                pointages_par_employe = defaultdict(list)
                 
-                for pointage in pointages_jour:
-                    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+                for p in pointages_jour:
+                    pointages_par_employe[p['username']].append(p)
+                
+                st.success(f"📊 **{len(pointages_par_employe)} employé(s) présent(s) ce jour** • {len(pointages_jour)} pointages total")
+                
+                # Afficher chaque employé dans une carte
+                for employe_nom, pointages in pointages_par_employe.items():
+                    # Séparer arrivées et départs
+                    arrivees = [p for p in pointages if p['type'] == 'arrivee']
+                    departs = [p for p in pointages if p['type'] == 'depart']
+                    
+                    # Calculer durée travaillée
+                    duree_total = "N/A"
+                    if arrivees and departs:
+                        try:
+                            from datetime import datetime, timedelta
+                            derniere_arrivee = datetime.strptime(arrivees[-1]['heure'], "%H:%M")
+                            dernier_depart = datetime.strptime(departs[-1]['heure'], "%H:%M")
+                            duree = dernier_depart - derniere_arrivee
+                            heures = duree.seconds // 3600
+                            minutes = (duree.seconds % 3600) // 60
+                            duree_total = f"{heures}h{minutes:02d}min"
+                        except:
+                            duree_total = "Erreur calcul"
+                    
+                    # Statut actuel
+                    if len(arrivees) > len(departs):
+                        statut = "🟢 PRÉSENT"
+                        couleur_bg = "#d4edda"
+                    elif len(arrivees) == len(departs):
+                        statut = "🔴 PARTI"
+                        couleur_bg = "#f8d7da"
+                    else:
+                        statut = "⚠️ ANOMALIE"
+                        couleur_bg = "#fff3cd"
+                    
+                    # Carte employé
+                    st.markdown(f"""
+                    <div style="padding: 15px; background: {couleur_bg}; border-radius: 10px; border-left: 5px solid #28a745; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="margin: 0; color: #333;">👤 {employe_nom}</h3>
+                            <span style="font-size: 18px; font-weight: bold; color: #333;">{statut}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Détails pointages
+                    col1, col2, col3 = st.columns(3)
                     
                     with col1:
-                        st.write(f"**{pointage['username']}**")
+                        st.markdown("**✅ Arrivée(s)**")
+                        if arrivees:
+                            for arr in arrivees:
+                                st.success(f"🕐 {arr['heure']}")
+                        else:
+                            st.info("Aucune arrivée")
+                    
                     with col2:
-                        st.write(f"🕐 {pointage['heure']}")
+                        st.markdown("**🏁 Départ(s)**")
+                        if departs:
+                            for dep in departs:
+                                st.error(f"🕐 {dep['heure']}")
+                        else:
+                            st.info("Pas encore parti")
+                    
                     with col3:
-                        type_emoji = "✅ ARRIVÉE" if pointage['type'] == 'arrivee' else "🏁 DÉPART"
-                        st.write(type_emoji)
-                    with col4:
-                        if pointage.get('notes'):
-                            st.caption(pointage['notes'])
+                        st.markdown("**⏱️ Durée totale**")
+                        st.info(f"⏰ {duree_total}")
                     
                     st.markdown("---")
             else:
