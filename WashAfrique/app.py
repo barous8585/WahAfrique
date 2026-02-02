@@ -1030,8 +1030,71 @@ else:  # EMPLOYÉ
     with tabs[2]:
         st.subheader("🚗 Lancer un Service Client")
         
-        st.info("💡 Enregistrez un service pour un client qui se présente")
+        st.info("💡 **Recherche rapide** : Tapez téléphone ou nom pour retrouver un client existant")
         
+        # === RECHERCHE RAPIDE CLIENT ===
+        st.markdown("### 🔍 Recherche Client")
+        
+        col_search1, col_search2 = st.columns([3, 1])
+        
+        with col_search1:
+            search_term = st.text_input(
+                "🔎 Rechercher par téléphone ou nom",
+                placeholder="Ex: +225 07, Mamadou, Koné...",
+                key="search_client_quick"
+            )
+        
+        with col_search2:
+            st.write("")  # Spacer
+            st.write("")  # Spacer
+            nouveau_client = st.checkbox("➕ Nouveau client", key="nouveau_client_check")
+        
+        client_selectionne = None
+        
+        # Si recherche active et pas nouveau client
+        if search_term and not nouveau_client:
+            # Recherche dans la base
+            clients = st.session_state.db.get_all_clients()
+            resultats = [
+                c for c in clients 
+                if search_term.lower() in c['tel'].lower() 
+                or search_term.lower() in c['nom'].lower()
+            ]
+            
+            if resultats:
+                st.success(f"✅ **{len(resultats)} client(s) trouvé(s)**")
+                
+                # Afficher les résultats sous forme de cartes cliquables
+                for client in resultats[:5]:  # Max 5 résultats
+                    col_info, col_btn = st.columns([5, 1])
+                    
+                    with col_info:
+                        st.markdown(f"""
+                        <div style="padding: 10px; background: #f0f2f6; border-radius: 5px; margin-bottom: 5px;">
+                            <p style="margin: 0; font-size: 16px;"><strong>{client['nom']}</strong></p>
+                            <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">
+                                📞 {client['tel']} | 🚗 {client.get('vehicule', 'N/A')} | 
+                                ⭐ {client.get('points_fidelite', 0)} pts | 
+                                💰 {format_fcfa(client.get('total_depense', 0))} dépensés
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col_btn:
+                        if st.button("✅", key=f"select_client_{client['id']}", help="Sélectionner ce client"):
+                            client_selectionne = client
+                            st.session_state['client_selectionne'] = client
+                            st.rerun()
+            else:
+                st.warning("❌ Aucun client trouvé. Cochez '➕ Nouveau client' pour créer.")
+        
+        # Récupérer client sélectionné depuis session state
+        if 'client_selectionne' in st.session_state and not nouveau_client:
+            client_selectionne = st.session_state['client_selectionne']
+        
+        st.markdown("---")
+        
+        # === FORMULAIRE SERVICE ===
         # Récupérer les services disponibles
         services = st.session_state.db.get_all_services(actif_only=True)
         
@@ -1039,43 +1102,51 @@ else:  # EMPLOYÉ
             st.warning("⚠️ Aucun service disponible. Contactez le propriétaire.")
         else:
             with st.form("lancer_service_employe"):
-                st.markdown("#### 👤 Informations Client")
+                st.markdown("#### 🔧 Service à Lancer")
                 
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    tel_client = st.text_input("📞 Téléphone du client *", placeholder="+225 XX XX XX XX")
-                    
-                    # Vérifier si le client existe
-                    client_existant = None
-                    if tel_client:
-                        client_existant = st.session_state.db.get_client_by_tel(tel_client)
-                        if client_existant:
-                            st.success(f"✅ Client trouvé: **{client_existant['nom']}**")
-                            nom_client = st.text_input("👤 Nom", value=client_existant['nom'], disabled=True)
-                            vehicule = st.text_input("🚗 Véhicule", value=client_existant.get('vehicule', ''))
-                        else:
-                            st.info("ℹ️ Nouveau client")
-                            nom_client = st.text_input("👤 Nom du client *", placeholder="Nom complet")
-                            vehicule = st.text_input("🚗 Véhicule *", placeholder="Marque et modèle")
-                    else:
+                # Si client sélectionné, afficher ses infos
+                if client_selectionne:
+                    st.success(f"✅ Client: **{client_selectionne['nom']}** | 📞 {client_selectionne['tel']} | 🚗 {client_selectionne.get('vehicule', 'N/A')}")
+                    tel_client = client_selectionne['tel']
+                    nom_client = client_selectionne['nom']
+                    vehicule_input = st.text_input("🚗 Véhicule (modifier si nécessaire)", value=client_selectionne.get('vehicule', ''))
+                    client_existant = client_selectionne
+                elif nouveau_client:
+                    # Nouveau client - saisie complète
+                    col1, col2 = st.columns(2)
+                    with col1:
                         nom_client = st.text_input("👤 Nom du client *", placeholder="Nom complet")
-                        vehicule = st.text_input("🚗 Véhicule *", placeholder="Marque et modèle")
+                        tel_client = st.text_input("📞 Téléphone *", placeholder="+225 XX XX XX XX")
+                    with col2:
+                        vehicule_input = st.text_input("🚗 Véhicule *", placeholder="Marque et modèle")
+                    client_existant = None
+                else:
+                    st.info("👆 Recherchez un client ci-dessus ou cochez 'Nouveau client'")
+                    tel_client = ""
+                    nom_client = ""
+                    vehicule_input = ""
+                    client_existant = None
                 
-                with col2:
+                st.markdown("---")
+                
+                # Sélection service et poste
+                col_srv, col_post = st.columns(2)
+                
+                with col_srv:
                     service_id = st.selectbox(
                         "🔧 Service demandé *",
                         options=[s['id'] for s in services],
                         format_func=lambda x: f"{next(s['nom'] for s in services if s['id'] == x)} - {format_fcfa(next(s['prix'] for s in services if s['id'] == x))}"
                     )
-                    
+                
+                with col_post:
                     poste_id = st.selectbox(
                         "🏢 Poste de lavage",
                         options=[p['id'] for p in st.session_state.db.get_all_postes()],
                         format_func=lambda x: next(p['nom'] for p in st.session_state.db.get_all_postes() if p['id'] == x)
                     )
-                    
-                    notes = st.text_area("📝 Notes (optionnel)", placeholder="Instructions spéciales...")
+                
+                notes = st.text_area("📝 Notes (optionnel)", placeholder="Instructions spéciales...")
                 
                 st.markdown("---")
                 
@@ -1086,12 +1157,15 @@ else:  # EMPLOYÉ
                 submitted = st.form_submit_button("✅ Démarrer le Service", use_container_width=True, type="primary")
                 
                 if submitted:
-                    if tel_client and nom_client and vehicule:
+                    if tel_client and nom_client and vehicule_input:
                         # Créer ou récupérer le client
                         if client_existant:
                             client_id = client_existant['id']
+                            # Mettre à jour le véhicule si modifié
+                            if vehicule_input != client_existant.get('vehicule', ''):
+                                st.session_state.db.cursor.execute("UPDATE clients SET vehicule = ? WHERE id = ?", (vehicule_input, client_id))
                         else:
-                            client_id = st.session_state.db.ajouter_client(nom_client, tel_client, "", vehicule)
+                            client_id = st.session_state.db.ajouter_client(nom_client, tel_client, "", vehicule_input)
                         
                         # Créer la réservation immédiate
                         now = datetime.now()
@@ -1102,12 +1176,16 @@ else:  # EMPLOYÉ
                             heure=now.strftime("%H:%M"),
                             montant=service_choisi['prix'],
                             poste_id=poste_id,
-                            employe_id=None,  # On peut ajouter l'ID de l'employé si nécessaire
+                            employe_id=st.session_state.user['id'],  # ID de l'employé connecté
                             notes=notes
                         )
                         
                         # Ajouter les points de fidélité
                         st.session_state.db.update_client_points(client_id, service_choisi['points'], "add")
+                        
+                        # Réinitialiser la sélection
+                        if 'client_selectionne' in st.session_state:
+                            del st.session_state['client_selectionne']
                         
                         st.success(f"✅ Service démarré avec succès !")
                         st.balloons()
@@ -1116,7 +1194,7 @@ else:  # EMPLOYÉ
                         st.markdown(f"""
                         ### 📋 Récapitulatif
                         - **Client:** {nom_client}
-                        - **Véhicule:** {vehicule}
+                        - **Véhicule:** {vehicule_input}
                         - **Service:** {service_choisi['nom']}
                         - **Prix:** {format_fcfa(service_choisi['prix'])}
                         - **Points gagnés:** +{service_choisi['points']} points
