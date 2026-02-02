@@ -707,7 +707,16 @@ if user_role == "admin":  # PROPRIÉTAIRE
         
         with sub_tabs_rapports[1]:
             st.subheader("📸 Galerie Photos Avant/Après")
-            st.info("💡 Photos de vos services pour TikTok, Instagram, Facebook")
+            
+            st.info("""
+            💡 **Photos de vos services pour TikTok, Instagram, Facebook**
+            
+            **Pour qualité optimale** :
+            - ✅ Utilisez le mode "📁 Upload" plutôt que "📷 Caméra"
+            - ✅ Prenez d'abord vos photos avec l'app caméra native du téléphone
+            - ✅ Téléchargez ensuite les photos en haute résolution
+            - ⚠️ Le mode "Caméra web" compresse automatiquement pour la performance
+            """)
             
             # Récupérer toutes les réservations avec photos
             services_avec_photos = st.session_state.db.get_toutes_photos_services(limit=100)
@@ -1188,7 +1197,7 @@ else:  # EMPLOYÉ
                                     for idx, photo in enumerate(photos_avant):
                                         col_img, col_btn = st.columns([4, 1])
                                         with col_img:
-                                            st.image(photo['photo_data'], width=150, caption=f"Photo {idx+1}")
+                                            st.image(photo['photo_data'], use_container_width=True, caption=f"Photo {idx+1}")
                                         with col_btn:
                                             if st.button("🗑️", key=f"del_avant_{photo['id']}"):
                                                 st.session_state.db.supprimer_photo_service(photo['id'])
@@ -1198,6 +1207,8 @@ else:  # EMPLOYÉ
                                 
                                 # Ajouter nouvelle photo
                                 st.write("**➕ Ajouter photo AVANT**")
+                                
+                                st.info("💡 **Astuce qualité** : Pour meilleure qualité sur TikTok/Instagram, préférez 'Upload' après avoir pris la photo avec votre app caméra native")
                                 
                                 mode_avant = st.radio(
                                     "Mode",
@@ -1262,7 +1273,7 @@ else:  # EMPLOYÉ
                                     for idx, photo in enumerate(photos_apres):
                                         col_img, col_btn = st.columns([4, 1])
                                         with col_img:
-                                            st.image(photo['photo_data'], width=150, caption=f"Photo {idx+1}")
+                                            st.image(photo['photo_data'], use_container_width=True, caption=f"Photo {idx+1}")
                                         with col_btn:
                                             if st.button("🗑️", key=f"del_apres_{photo['id']}"):
                                                 st.session_state.db.supprimer_photo_service(photo['id'])
@@ -1272,6 +1283,8 @@ else:  # EMPLOYÉ
                                 
                                 # Ajouter nouvelle photo
                                 st.write("**➕ Ajouter photo APRÈS**")
+                                
+                                st.info("💡 **Astuce qualité** : Pour meilleure qualité sur TikTok/Instagram, préférez 'Upload' après avoir pris la photo avec votre app caméra native")
                                 
                                 mode_apres = st.radio(
                                     "Mode",
