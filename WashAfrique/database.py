@@ -525,7 +525,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT p.id, p.reservation_id, p.montant, p.methode_paiement, 
+            SELECT p.id, p.reservation_id, p.montant, p.methode as methode_paiement, 
                    p.date_paiement, p.notes,
                    c.nom as client_nom, s.nom as service_nom
             FROM paiements p
