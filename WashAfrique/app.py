@@ -151,6 +151,11 @@ def check_authentication():
 if not check_authentication():
     st.stop()
 
+# Vérifier que l'utilisateur existe dans session_state
+if "user" not in st.session_state or not st.session_state.user:
+    st.session_state.authenticated = False
+    st.rerun()
+
 # ===== NAVIGATION HORIZONTALE =====
 nom_entreprise = st.session_state.db.get_parametre('nom_entreprise', 'WashAfrique Pro')
 st.markdown(f"""
@@ -164,6 +169,8 @@ col1, col2, col3 = st.columns([3, 1, 1])
 with col3:
     if st.button("🚪 Déconnexion", use_container_width=True):
         st.session_state.authenticated = False
+        if "user" in st.session_state:
+            del st.session_state.user
         st.rerun()
 
 # Navigation selon le rôle
