@@ -520,6 +520,24 @@ class Database:
         conn.close()
         return paiement_id
     
+    def get_all_paiements(self) -> List[Dict]:
+        """Récupère tous les paiements avec infos clients et services"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.id, p.reservation_id, p.montant, p.methode_paiement, 
+                   p.date_paiement, p.notes,
+                   c.nom as client_nom, s.nom as service_nom
+            FROM paiements p
+            LEFT JOIN reservations r ON p.reservation_id = r.id
+            LEFT JOIN clients c ON r.client_id = c.id
+            LEFT JOIN services s ON r.service_id = s.id
+            ORDER BY p.date_paiement DESC
+        """)
+        paiements = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return paiements
+    
     # ===== CODES PROMO =====
     def ajouter_code_promo(
         self,
