@@ -1245,13 +1245,15 @@ else:  # EMPLOYÉ
                                         key=f"camera_avant_{res['id']}_{facing_mode_avant}"
                                     )
                                 else:
-                                    photo_avant = st.file_uploader(
-                                        "Upload photo",
+                                    photos_avant_upload = st.file_uploader(
+                                        "Upload photos (plusieurs à la fois possible)",
                                         type=['png', 'jpg', 'jpeg'],
-                                        key=f"upload_avant_{res['id']}"
+                                        key=f"upload_avant_{res['id']}",
+                                        accept_multiple_files=True
                                     )
                                 
-                                if photo_avant:
+                                # Bouton de sauvegarde pour caméra (une seule photo)
+                                if mode_avant == "📷 Caméra" and photo_avant:
                                     if st.button("💾 Sauvegarder cette photo AVANT", key=f"save_avant_{res['id']}", use_container_width=True):
                                         photo_bytes = photo_avant.read()
                                         st.session_state.db.ajouter_photo_service(
@@ -1261,6 +1263,24 @@ else:  # EMPLOYÉ
                                             employe_id=st.session_state.user['id']
                                         )
                                         st.success("✅ Photo AVANT ajoutée !")
+                                        st.rerun()
+                                
+                                # Bouton de sauvegarde pour upload (plusieurs photos)
+                                if mode_avant == "📁 Upload" and photos_avant_upload:
+                                    st.write(f"📤 **{len(photos_avant_upload)} photo(s) sélectionnée(s)**")
+                                    if st.button("💾 Sauvegarder TOUTES les photos AVANT", key=f"save_all_avant_{res['id']}", use_container_width=True):
+                                        nb_ajoutees = 0
+                                        for photo_file in photos_avant_upload:
+                                            photo_bytes = photo_file.read()
+                                            st.session_state.db.ajouter_photo_service(
+                                                res['id'],
+                                                'avant',
+                                                photo_bytes,
+                                                employe_id=st.session_state.user['id']
+                                            )
+                                            nb_ajoutees += 1
+                                        st.success(f"✅ {nb_ajoutees} photo(s) AVANT ajoutée(s) !")
+                                        st.balloons()
                                         st.rerun()
                             
                             # ===== COLONNE PHOTOS APRÈS =====
@@ -1321,13 +1341,15 @@ else:  # EMPLOYÉ
                                         key=f"camera_apres_{res['id']}_{facing_mode_apres}"
                                     )
                                 else:
-                                    photo_apres = st.file_uploader(
-                                        "Upload photo",
+                                    photos_apres_upload = st.file_uploader(
+                                        "Upload photos (plusieurs à la fois possible)",
                                         type=['png', 'jpg', 'jpeg'],
-                                        key=f"upload_apres_{res['id']}"
+                                        key=f"upload_apres_{res['id']}",
+                                        accept_multiple_files=True
                                     )
                                 
-                                if photo_apres:
+                                # Bouton de sauvegarde pour caméra (une seule photo)
+                                if mode_apres == "📷 Caméra" and photo_apres:
                                     if st.button("💾 Sauvegarder cette photo APRÈS", key=f"save_apres_{res['id']}", use_container_width=True):
                                         photo_bytes = photo_apres.read()
                                         st.session_state.db.ajouter_photo_service(
@@ -1337,6 +1359,24 @@ else:  # EMPLOYÉ
                                             employe_id=st.session_state.user['id']
                                         )
                                         st.success("✅ Photo APRÈS ajoutée !")
+                                        st.rerun()
+                                
+                                # Bouton de sauvegarde pour upload (plusieurs photos)
+                                if mode_apres == "📁 Upload" and photos_apres_upload:
+                                    st.write(f"📤 **{len(photos_apres_upload)} photo(s) sélectionnée(s)**")
+                                    if st.button("💾 Sauvegarder TOUTES les photos APRÈS", key=f"save_all_apres_{res['id']}", use_container_width=True):
+                                        nb_ajoutees = 0
+                                        for photo_file in photos_apres_upload:
+                                            photo_bytes = photo_file.read()
+                                            st.session_state.db.ajouter_photo_service(
+                                                res['id'],
+                                                'apres',
+                                                photo_bytes,
+                                                employe_id=st.session_state.user['id']
+                                            )
+                                            nb_ajoutees += 1
+                                        st.success(f"✅ {nb_ajoutees} photo(s) APRÈS ajoutée(s) !")
+                                        st.balloons()
                                         st.rerun()
                             
                             st.markdown("---")
