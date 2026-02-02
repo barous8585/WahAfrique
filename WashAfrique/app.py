@@ -131,14 +131,18 @@ def check_authentication():
             password = st.text_input("🔒 Mot de passe", type="password", placeholder="Entrez votre mot de passe")
             
             if st.button("🚀 Se connecter", use_container_width=True, type="primary"):
-                user = st.session_state.db.verify_user(username, password)
-                if user:
-                    st.session_state.authenticated = True
-                    st.session_state.user = user
-                    st.success("✅ Connexion réussie !")
-                    st.rerun()
+                if not username or not password:
+                    st.error("❌ Veuillez remplir tous les champs")
                 else:
-                    st.error("❌ Identifiants incorrects")
+                    user = st.session_state.db.verify_user(username, password)
+                    if user:
+                        st.session_state.authenticated = True
+                        st.session_state.user = user
+                        st.success("✅ Connexion réussie !")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.error("❌ Identifiants incorrects")
             
             st.markdown("---")
             st.info("💡 **Compte par défaut:** Propriétaire → admin / admin123")
@@ -153,8 +157,11 @@ if not check_authentication():
 
 # Vérifier que l'utilisateur existe dans session_state
 if "user" not in st.session_state or not st.session_state.user:
+    st.error("⚠️ Session expirée. Veuillez vous reconnecter.")
     st.session_state.authenticated = False
-    st.rerun()
+    if "user" in st.session_state:
+        del st.session_state.user
+    st.stop()
 
 # ===== NAVIGATION HORIZONTALE =====
 nom_entreprise = st.session_state.db.get_parametre('nom_entreprise', 'WashAfrique Pro')
