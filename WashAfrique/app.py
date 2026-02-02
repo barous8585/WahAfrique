@@ -1198,6 +1198,7 @@ else:  # EMPLOYÉ
                                 
                                 # Ajouter nouvelle photo
                                 st.write("**➕ Ajouter photo AVANT**")
+                                
                                 mode_avant = st.radio(
                                     "Mode",
                                     ["📷 Caméra", "📁 Upload"],
@@ -1206,9 +1207,31 @@ else:  # EMPLOYÉ
                                 )
                                 
                                 if mode_avant == "📷 Caméra":
+                                    # Sélecteur caméra
+                                    camera_type_avant = st.radio(
+                                        "Quelle caméra ?",
+                                        ["🔙 Caméra Arrière (principale)", "🤳 Caméra Avant (selfie)"],
+                                        key=f"camera_type_avant_{res['id']}",
+                                        horizontal=True
+                                    )
+                                    
+                                    # Déterminer le facingMode
+                                    facing_mode_avant = "environment" if "Arrière" in camera_type_avant else "user"
+                                    
+                                    # Composant HTML personnalisé pour contrôler la caméra
+                                    st.markdown(f"""
+                                    <div style="padding: 10px; background: #f0f2f6; border-radius: 5px; margin-bottom: 10px;">
+                                        <p style="margin: 0; font-size: 14px;">📱 Mode: <strong>{camera_type_avant}</strong></p>
+                                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">
+                                            💡 Si la mauvaise caméra s'ouvre, utilisez le bouton de votre navigateur pour basculer
+                                        </p>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    # Utiliser une key différente pour forcer le rechargement
                                     photo_avant = st.camera_input(
-                                        "Prendre photo",
-                                        key=f"camera_avant_{res['id']}"
+                                        f"📸 Prendre photo ({camera_type_avant})",
+                                        key=f"camera_avant_{res['id']}_{facing_mode_avant}"
                                     )
                                 else:
                                     photo_avant = st.file_uploader(
@@ -1249,6 +1272,7 @@ else:  # EMPLOYÉ
                                 
                                 # Ajouter nouvelle photo
                                 st.write("**➕ Ajouter photo APRÈS**")
+                                
                                 mode_apres = st.radio(
                                     "Mode",
                                     ["📷 Caméra", "📁 Upload"],
@@ -1257,9 +1281,31 @@ else:  # EMPLOYÉ
                                 )
                                 
                                 if mode_apres == "📷 Caméra":
+                                    # Sélecteur caméra
+                                    camera_type_apres = st.radio(
+                                        "Quelle caméra ?",
+                                        ["🔙 Caméra Arrière (principale)", "🤳 Caméra Avant (selfie)"],
+                                        key=f"camera_type_apres_{res['id']}",
+                                        horizontal=True
+                                    )
+                                    
+                                    # Déterminer le facingMode
+                                    facing_mode_apres = "environment" if "Arrière" in camera_type_apres else "user"
+                                    
+                                    # Composant HTML personnalisé pour contrôler la caméra
+                                    st.markdown(f"""
+                                    <div style="padding: 10px; background: #f0f2f6; border-radius: 5px; margin-bottom: 10px;">
+                                        <p style="margin: 0; font-size: 14px;">📱 Mode: <strong>{camera_type_apres}</strong></p>
+                                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">
+                                            💡 Si la mauvaise caméra s'ouvre, utilisez le bouton de votre navigateur pour basculer
+                                        </p>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    # Utiliser une key différente pour forcer le rechargement
                                     photo_apres = st.camera_input(
-                                        "Prendre photo",
-                                        key=f"camera_apres_{res['id']}"
+                                        f"📸 Prendre photo ({camera_type_apres})",
+                                        key=f"camera_apres_{res['id']}_{facing_mode_apres}"
                                     )
                                 else:
                                     photo_apres = st.file_uploader(
