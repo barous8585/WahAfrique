@@ -342,14 +342,20 @@ if user_role == "admin":  # PROPRIÉTAIRE
             pointages_jour = st.session_state.db.get_pointages_jour(date_pointage.isoformat())
             
             if pointages_jour:
+                # Récupérer horaires d'ouverture
+                heure_ouverture = st.session_state.db.get_parametre('heure_ouverture', '08:00')
+                heure_fermeture = st.session_state.db.get_parametre('heure_fermeture', '19:00')
+                
                 # Regrouper les pointages par employé
                 from collections import defaultdict
+                from datetime import datetime, timedelta
                 pointages_par_employe = defaultdict(list)
                 
                 for p in pointages_jour:
                     pointages_par_employe[p['username']].append(p)
                 
                 st.success(f"📊 **{len(pointages_par_employe)} employé(s) présent(s) ce jour** • {len(pointages_jour)} pointages total")
+                st.info(f"🕐 **Horaires attendus** : Arrivée {heure_ouverture} | Départ {heure_fermeture}")
                 
                 # Afficher chaque employé dans une carte
                 for employe_nom, pointages in pointages_par_employe.items():
@@ -357,11 +363,47 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     arrivees = [p for p in pointages if p['type'] == 'arrivee']
                     departs = [p for p in pointages if p['type'] == 'depart']
                     
+                    # === ANALYSE PONCTUALITÉ ===
+                    ponctualite_msg = ""
+                    ponctualite_couleur = "#28a745"  # Vert par défaut
+                    
+                    if arrivees:
+                        premiere_arrivee = arrivees[0]['heure']
+                        try:
+                            heure_arrivee_dt = datetime.strptime(premiere_arrivee, "%H:%M")
+                            heure_attendue_dt = datetime.strptime(heure_ouverture, "%H:%M")
+                            
+                            diff = heure_arrivee_dt - heure_attendue_dt
+                            diff_minutes = int(diff.total_seconds() / 60)
+                            
+                            if diff_minutes <= 0:
+                                # À l'heure ou en avance
+                                if diff_minutes == 0:
+                                    ponctualite_msg = f"✅ <strong>À L'HEURE</strong> ({premiere_arrivee})"
+                                    ponctualite_couleur = "#28a745"  # Vert
+                                else:
+                                    ponctualite_msg = f"⭐ <strong>EN AVANCE</strong> de {abs(diff_minutes)} min ({premiere_arrivee})"
+                                    ponctualite_couleur = "#28a745"  # Vert
+                            elif diff_minutes <= 15:
+                                # Léger retard (toléré)
+                                ponctualite_msg = f"⚠️ <strong>LÉGER RETARD</strong> de {diff_minutes} min ({premiere_arrivee})"
+                                ponctualite_couleur = "#ffc107"  # Orange
+                            else:
+                                # Retard important
+                                ponctualite_msg = f"❌ <strong>RETARD</strong> de {diff_minutes} min ({premiere_arrivee})"
+                                ponctualite_couleur = "#dc3545"  # Rouge
+                        except:
+                            ponctualite_msg = f"ℹ️ Arrivée: {premiere_arrivee}"
+                            ponctualite_couleur = "#6c757d"  # Gris
+                    else:
+                        # Absent
+                        ponctualite_msg = "❌ <strong>ABSENT</strong> (aucune arrivée enregistrée)"
+                        ponctualite_couleur = "#dc3545"  # Rouge
+                    
                     # Calculer durée travaillée
                     duree_total = "N/A"
                     if arrivees and departs:
                         try:
-                            from datetime import datetime, timedelta
                             derniere_arrivee = datetime.strptime(arrivees[-1]['heure'], "%H:%M")
                             dernier_depart = datetime.strptime(departs[-1]['heure'], "%H:%M")
                             duree = dernier_depart - derniere_arrivee
@@ -382,12 +424,15 @@ if user_role == "admin":  # PROPRIÉTAIRE
                         statut = "⚠️ ANOMALIE"
                         couleur_bg = "#fff3cd"
                     
-                    # Carte employé
+                    # Carte employé avec ponctualité
                     st.markdown(f"""
-                    <div style="padding: 15px; background: {couleur_bg}; border-radius: 10px; border-left: 5px solid #28a745; margin-bottom: 15px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="padding: 15px; background: {couleur_bg}; border-radius: 10px; border-left: 5px solid {ponctualite_couleur}; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <h3 style="margin: 0; color: #333;">👤 {employe_nom}</h3>
                             <span style="font-size: 18px; font-weight: bold; color: #333;">{statut}</span>
+                        </div>
+                        <div style="padding: 10px; background: white; border-radius: 5px; border-left: 3px solid {ponctualite_couleur};">
+                            <p style="margin: 0; color: #333; font-size: 14px;">{ponctualite_msg}</p>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
