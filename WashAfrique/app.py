@@ -760,7 +760,146 @@ if user_role == "admin":  # PROPRIÉTAIRE
         
         with sub_tabs_rapports[0]:
             st.subheader("📈 Statistiques Générales")
-            st.info("Module statistiques à développer")
+            
+            # === PÉRIODE D'ANALYSE ===
+            st.markdown("### 📅 Sélection Période")
+            
+            col_date1, col_date2 = st.columns(2)
+            with col_date1:
+                date_debut = st.date_input("Date début", value=date.today() - timedelta(days=30))
+            with col_date2:
+                date_fin = st.date_input("Date fin", value=date.today())
+            
+            # === KPIs PRINCIPAUX ===
+            st.markdown("---")
+            st.markdown("### 💰 Indicateurs Clés")
+            
+            # Récupérer données période
+            from datetime import timedelta
+            paiements_periode = st.session_state.db.get_all_paiements()
+            paiements_periode = [
+                p for p in paiements_periode 
+                if date_debut <= date.fromisoformat(p['date_paiement'][:10]) <= date_fin
+            ]
+            
+            reservations_periode = st.session_state.db.get_all_reservations()
+            reservations_periode = [
+                r for r in reservations_periode
+                if date_debut <= date.fromisoformat(r['date']) <= date_fin
+            ]
+            
+            # Calculer KPIs
+            ca_periode = sum(p['montant'] for p in paiements_periode)
+            nb_services = len(reservations_periode)
+            nb_clients_uniques = len(set(r['client_id'] for r in reservations_periode if r.get('client_id')))
+            ticket_moyen = ca_periode / nb_services if nb_services > 0 else 0
+            
+            # Afficher KPIs
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    "💰 CA Total",
+                    format_fcfa(ca_periode),
+                    delta=f"+{len(paiements_periode)} paiements"
+                )
+            
+            with col2:
+                st.metric(
+                    "🚗 Services",
+                    f"{nb_services}",
+                    delta=f"Ticket moyen: {format_fcfa(ticket_moyen)}"
+                )
+            
+            with col3:
+                st.metric(
+                    "👥 Clients",
+                    f"{nb_clients_uniques}",
+                    delta="uniques"
+                )
+            
+            with col4:
+                taux_completion = (len([r for r in reservations_periode if r['statut'] == 'valide']) / nb_services * 100) if nb_services > 0 else 0
+                st.metric(
+                    "✅ Taux Validation",
+                    f"{taux_completion:.1f}%",
+                    delta=f"{len([r for r in reservations_periode if r['statut'] == 'valide'])} validés"
+                )
+            
+            st.markdown("---")
+            
+            # === GRAPHIQUE ÉVOLUTION CA ===
+            st.markdown("### 📊 Évolution du CA")
+            
+            if paiements_periode:
+                # Grouper par jour
+                from collections import defaultdict
+                ca_par_jour = defaultdict(float)
+                
+                for p in paiements_periode:
+                    jour = p['date_paiement'][:10]
+                    ca_par_jour[jour] += p['montant']
+                
+                # Convertir en DataFrame pour graphique
+                import pandas as pd
+                df_ca = pd.DataFrame([
+                    {"Date": jour, "CA (FCFA)": montant}
+                    for jour, montant in sorted(ca_par_jour.items())
+                ])
+                
+                st.line_chart(df_ca.set_index("Date"))
+            else:
+                st.info("Aucune donnée pour cette période")
+            
+            st.markdown("---")
+            
+            # === TOP SERVICES ===
+            st.markdown("### 🏆 Top 5 Services")
+            
+            if reservations_periode:
+                from collections import Counter
+                services_count = Counter([r['service_nom'] for r in reservations_periode if r.get('service_nom')])
+                top_services = services_count.most_common(5)
+                
+                col_service, col_count = st.columns(2)
+                
+                with col_service:
+                    st.markdown("**Service**")
+                    for service, _ in top_services:
+                        st.write(f"🔧 {service}")
+                
+                with col_count:
+                    st.markdown("**Nombre**")
+                    for _, count in top_services:
+                        st.write(f"**{count}** fois")
+            else:
+                st.info("Aucun service dans cette période")
+            
+            st.markdown("---")
+            
+            # === RÉPARTITION MÉTHODES PAIEMENT ===
+            st.markdown("### 💳 Méthodes de Paiement")
+            
+            if paiements_periode:
+                methodes_count = {}
+                for p in paiements_periode:
+                    methode = p.get('methode_paiement', 'Non défini')
+                    methodes_count[methode] = methodes_count.get(methode, 0) + p['montant']
+                
+                col_methode, col_montant = st.columns(2)
+                
+                with col_methode:
+                    st.markdown("**Méthode**")
+                    for methode in methodes_count:
+                        emoji = "💵" if methode == "Espèces" else "💳" if methode == "Carte" else "📱"
+                        st.write(f"{emoji} {methode}")
+                
+                with col_montant:
+                    st.markdown("**Montant**")
+                    for montant in methodes_count.values():
+                        st.write(f"**{format_fcfa(montant)}**")
+            else:
+                st.info("Aucun paiement dans cette période")
         
         with sub_tabs_rapports[1]:
             st.subheader("📸 Galerie Photos Avant/Après")
@@ -848,8 +987,170 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 st.write("💡 Les employés peuvent ajouter des photos lors des services en cours")
         
         with sub_tabs_rapports[2]:
-            st.subheader("📄 Exports")
-            st.info("Module exports à développer")
+            st.subheader("📄 Exports de Données")
+            
+            st.info("💡 **Exportez vos données** pour Excel, comptabilité, analyses externes")
+            
+            st.markdown("### 📊 Rapports Disponibles")
+            
+            col_export1, col_export2 = st.columns(2)
+            
+            with col_export1:
+                st.markdown("#### 💰 Données Financières")
+                
+                # Export Paiements
+                if st.button("📥 Export Paiements (CSV)", use_container_width=True):
+                    paiements = st.session_state.db.get_all_paiements()
+                    
+                    if paiements:
+                        import pandas as pd
+                        df = pd.DataFrame(paiements)
+                        csv = df.to_csv(index=False)
+                        
+                        st.download_button(
+                            label="💾 Télécharger paiements.csv",
+                            data=csv,
+                            file_name=f"paiements_{date.today().isoformat()}.csv",
+                            mime="text/csv"
+                        )
+                        st.success(f"✅ {len(paiements)} paiements prêts à télécharger")
+                    else:
+                        st.warning("Aucun paiement à exporter")
+                
+                st.markdown("---")
+                
+                # Export Réservations/Services
+                if st.button("📥 Export Services (CSV)", use_container_width=True):
+                    reservations = st.session_state.db.get_all_reservations()
+                    
+                    if reservations:
+                        import pandas as pd
+                        df = pd.DataFrame(reservations)
+                        csv = df.to_csv(index=False)
+                        
+                        st.download_button(
+                            label="💾 Télécharger services.csv",
+                            data=csv,
+                            file_name=f"services_{date.today().isoformat()}.csv",
+                            mime="text/csv"
+                        )
+                        st.success(f"✅ {len(reservations)} services prêts à télécharger")
+                    else:
+                        st.warning("Aucun service à exporter")
+            
+            with col_export2:
+                st.markdown("#### 👥 Données Clients & RH")
+                
+                # Export Clients
+                if st.button("📥 Export Clients (CSV)", use_container_width=True):
+                    clients = st.session_state.db.get_all_clients()
+                    
+                    if clients:
+                        import pandas as pd
+                        df = pd.DataFrame(clients)
+                        csv = df.to_csv(index=False)
+                        
+                        st.download_button(
+                            label="💾 Télécharger clients.csv",
+                            data=csv,
+                            file_name=f"clients_{date.today().isoformat()}.csv",
+                            mime="text/csv"
+                        )
+                        st.success(f"✅ {len(clients)} clients prêts à télécharger")
+                    else:
+                        st.warning("Aucun client à exporter")
+                
+                st.markdown("---")
+                
+                # Export Pointages
+                if st.button("📥 Export Pointages (CSV)", use_container_width=True):
+                    # Période pointages
+                    date_debut_pointage = date.today() - timedelta(days=30)
+                    date_fin_pointage = date.today()
+                    
+                    pointages = []
+                    current_date = date_debut_pointage
+                    while current_date <= date_fin_pointage:
+                        pointages.extend(st.session_state.db.get_pointages_jour(current_date.isoformat()))
+                        current_date += timedelta(days=1)
+                    
+                    if pointages:
+                        import pandas as pd
+                        df = pd.DataFrame(pointages)
+                        csv = df.to_csv(index=False)
+                        
+                        st.download_button(
+                            label="💾 Télécharger pointages_30j.csv",
+                            data=csv,
+                            file_name=f"pointages_{date.today().isoformat()}.csv",
+                            mime="text/csv"
+                        )
+                        st.success(f"✅ {len(pointages)} pointages (30 derniers jours)")
+                    else:
+                        st.warning("Aucun pointage à exporter")
+            
+            st.markdown("---")
+            
+            st.markdown("### 📄 Rapport Mensuel Complet")
+            
+            if st.button("📊 Générer Rapport Mensuel (TXT)", use_container_width=True, type="primary"):
+                # Créer rapport texte complet
+                from datetime import datetime, timedelta
+                
+                debut_mois = date.today().replace(day=1)
+                fin_mois = date.today()
+                
+                paiements_mois = st.session_state.db.get_all_paiements()
+                paiements_mois = [p for p in paiements_mois if debut_mois <= date.fromisoformat(p['date_paiement'][:10]) <= fin_mois]
+                
+                reservations_mois = st.session_state.db.get_all_reservations()
+                reservations_mois = [r for r in reservations_mois if debut_mois <= date.fromisoformat(r['date']) <= fin_mois]
+                
+                ca_mois = sum(p['montant'] for p in paiements_mois)
+                
+                rapport = f"""
+╔══════════════════════════════════════════════════════════╗
+║       RAPPORT MENSUEL WASHAFRIQUE PRO                    ║
+║       Période: {debut_mois.strftime('%d/%m/%Y')} - {fin_mois.strftime('%d/%m/%Y')}                  ║
+╚══════════════════════════════════════════════════════════╝
+
+📊 RÉSUMÉ FINANCIER
+────────────────────────────────────────────────────────────
+💰 Chiffre d'Affaires Total:     {format_fcfa(ca_mois)}
+💳 Nombre de Paiements:           {len(paiements_mois)}
+🚗 Nombre de Services:            {len(reservations_mois)}
+💵 Ticket Moyen:                  {format_fcfa(ca_mois / len(reservations_mois) if reservations_mois else 0)}
+
+👥 STATISTIQUES CLIENTS
+────────────────────────────────────────────────────────────
+Clients uniques ce mois:          {len(set(r['client_id'] for r in reservations_mois if r.get('client_id')))}
+
+🔧 SERVICES POPULAIRES
+────────────────────────────────────────────────────────────
+"""
+                from collections import Counter
+                if reservations_mois:
+                    services_count = Counter([r['service_nom'] for r in reservations_mois if r.get('service_nom')])
+                    for service, count in services_count.most_common(5):
+                        rapport += f"{service:.<40} {count:>3} fois\n"
+                
+                rapport += f"""
+═══════════════════════════════════════════════════════════
+Généré le: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+WashAfrique Pro - Gestion Station de Lavage
+═══════════════════════════════════════════════════════════
+"""
+                
+                st.download_button(
+                    label="💾 Télécharger rapport_mensuel.txt",
+                    data=rapport,
+                    file_name=f"rapport_mensuel_{date.today().strftime('%Y_%m')}.txt",
+                    mime="text/plain"
+                )
+                st.success("✅ Rapport mensuel généré !")
+                
+                with st.expander("👁️ Prévisualiser le rapport"):
+                    st.text(rapport)
     
     # ===== ONGLET 9: PROFIL PROPRIÉTAIRE =====
     with tabs[8]:
