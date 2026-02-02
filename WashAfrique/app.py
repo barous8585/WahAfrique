@@ -1526,19 +1526,52 @@ else:  # EMPLOYÉ
     with tabs[1]:
         st.subheader("⏰ Pointage")
         
+        # Vérifier les pointages du jour
+        pointages_aujourdhui = st.session_state.db.get_pointages_jour(date.today().isoformat())
+        pointages_user = [p for p in pointages_aujourdhui if p['user_id'] == st.session_state.user['id']]
+        
+        arrivee_deja_pointee = any(p['type'] == 'arrivee' for p in pointages_user)
+        depart_deja_pointe = any(p['type'] == 'depart' for p in pointages_user)
+        
+        # Afficher statut du jour
+        if arrivee_deja_pointee and depart_deja_pointe:
+            st.success("✅ **Vous avez terminé votre journée !**")
+            st.info("Arrivée et départ déjà enregistrés pour aujourd'hui.")
+        elif arrivee_deja_pointee:
+            st.info("✅ **Arrivée enregistrée**. N'oubliez pas de pointer votre départ en fin de journée.")
+        else:
+            st.warning("⏰ **Vous n'avez pas encore pointé votre arrivée aujourd'hui.**")
+        
+        st.markdown("---")
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("✅ Pointer Arrivée", use_container_width=True, type="primary"):
-                pointage_id = st.session_state.db.enregistrer_pointage(st.session_state.user['id'], 'arrivee')
-                st.success(f"✅ Pointage enregistré à {datetime.now().strftime('%H:%M')}")
-                st.rerun()
+            # Désactiver si déjà pointé
+            if arrivee_deja_pointee:
+                st.button("✅ Pointer Arrivée", use_container_width=True, type="primary", disabled=True)
+                st.caption("✅ Déjà pointé aujourd'hui")
+            else:
+                if st.button("✅ Pointer Arrivée", use_container_width=True, type="primary"):
+                    pointage_id = st.session_state.db.enregistrer_pointage(st.session_state.user['id'], 'arrivee')
+                    st.success(f"✅ Arrivée enregistrée à {datetime.now().strftime('%H:%M')}")
+                    st.balloons()
+                    st.rerun()
         
         with col2:
-            if st.button("🏁 Pointer Départ", use_container_width=True):
-                pointage_id = st.session_state.db.enregistrer_pointage(st.session_state.user['id'], 'depart')
-                st.success(f"🏁 Départ enregistré à {datetime.now().strftime('%H:%M')}")
-                st.rerun()
+            # Désactiver si déjà pointé OU si pas encore arrivé
+            if depart_deja_pointe:
+                st.button("🏁 Pointer Départ", use_container_width=True, disabled=True)
+                st.caption("✅ Déjà pointé aujourd'hui")
+            elif not arrivee_deja_pointee:
+                st.button("🏁 Pointer Départ", use_container_width=True, disabled=True)
+                st.caption("⚠️ Pointez d'abord l'arrivée")
+            else:
+                if st.button("🏁 Pointer Départ", use_container_width=True):
+                    pointage_id = st.session_state.db.enregistrer_pointage(st.session_state.user['id'], 'depart')
+                    st.success(f"🏁 Départ enregistré à {datetime.now().strftime('%H:%M')}")
+                    st.balloons()
+                    st.rerun()
         
         st.markdown("---")
         st.subheader("📊 Mes Pointages Ce Mois")
