@@ -243,6 +243,65 @@ class Database:
             )
         ''')
         
+        # Table paramètres site client
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS parametres_site_client (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cle TEXT UNIQUE NOT NULL,
+                valeur TEXT,
+                type TEXT DEFAULT 'texte',
+                description TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table horaires disponibles réservation web
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS creneaux_disponibles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                jour_semaine TEXT NOT NULL,
+                heure_debut TEXT NOT NULL,
+                heure_fin TEXT NOT NULL,
+                intervalle_minutes INTEGER DEFAULT 30,
+                capacite_simultanee INTEGER DEFAULT 2,
+                actif INTEGER DEFAULT 1
+            )
+        ''')
+        
+        # Table réservations web (depuis site client)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reservations_web (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code_reservation TEXT UNIQUE NOT NULL,
+                nom_client TEXT NOT NULL,
+                tel_client TEXT NOT NULL,
+                email_client TEXT,
+                service_id INTEGER NOT NULL,
+                date_reservation TEXT NOT NULL,
+                heure_reservation TEXT NOT NULL,
+                statut TEXT DEFAULT 'en_attente',
+                notes_client TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                confirmed_at TEXT,
+                FOREIGN KEY (service_id) REFERENCES services (id)
+            )
+        ''')
+        
+        # Table avis clients
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS avis_clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reservation_web_id INTEGER,
+                nom_client TEXT NOT NULL,
+                note INTEGER NOT NULL,
+                commentaire TEXT,
+                photo_url TEXT,
+                visible INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (reservation_web_id) REFERENCES reservations_web (id)
+            )
+        ''')
+        
         conn.commit()
         
         # Créer utilisateur admin par défaut
@@ -273,6 +332,47 @@ class Database:
             cursor.executemany(
                 "INSERT INTO recompenses (nom, points_requis, reduction, type) VALUES (?, ?, ?, ?)",
                 recompenses_defaut
+            )
+            conn.commit()
+        
+        # Initialiser paramètres site client par défaut
+        cursor.execute("SELECT COUNT(*) as count FROM parametres_site_client")
+        if cursor.fetchone()['count'] == 0:
+            parametres_defaut = [
+                ("site_actif", "1", "boolean", "Site client activé/désactivé"),
+                ("nom_entreprise_site", "WashAfrique Pro", "texte", "Nom affiché sur site client"),
+                ("slogan", "Votre voiture mérite le meilleur", "texte", "Slogan page d'accueil"),
+                ("couleur_principale", "#667eea", "couleur", "Couleur principale site"),
+                ("telephone_contact", "+225 XX XX XX XX", "texte", "Numéro affiché"),
+                ("email_contact", "contact@washafrique.com", "texte", "Email contact"),
+                ("adresse", "Abidjan, Côte d'Ivoire", "texte", "Adresse entreprise"),
+                ("texte_accueil", "Réservez votre lavage en ligne", "textarea", "Texte page accueil"),
+                ("reservation_active", "1", "boolean", "Autoriser réservations"),
+                ("delai_min_reservation", "2", "nombre", "Heures min avant réservation"),
+                ("notif_email", "admin@washafrique.com", "texte", "Email notification réservations"),
+                ("notif_sms", "1", "boolean", "Activer SMS notification")
+            ]
+            cursor.executemany(
+                "INSERT INTO parametres_site_client (cle, valeur, type, description) VALUES (?, ?, ?, ?)",
+                parametres_defaut
+            )
+            conn.commit()
+        
+        # Initialiser créneaux horaires par défaut
+        cursor.execute("SELECT COUNT(*) as count FROM creneaux_disponibles")
+        if cursor.fetchone()['count'] == 0:
+            creneaux_defaut = [
+                ("lundi", "08:00", "18:00", 30, 2, 1),
+                ("mardi", "08:00", "18:00", 30, 2, 1),
+                ("mercredi", "08:00", "18:00", 30, 2, 1),
+                ("jeudi", "08:00", "18:00", 30, 2, 1),
+                ("vendredi", "08:00", "18:00", 30, 2, 1),
+                ("samedi", "08:00", "16:00", 30, 2, 1),
+                ("dimanche", "00:00", "00:00", 30, 0, 0)
+            ]
+            cursor.executemany(
+                "INSERT INTO creneaux_disponibles (jour_semaine, heure_debut, heure_fin, intervalle_minutes, capacite_simultanee, actif) VALUES (?, ?, ?, ?, ?, ?)",
+                creneaux_defaut
             )
             conn.commit()
         
@@ -1126,3 +1226,181 @@ class Database:
         self.reinitialiser_clients()
         
         return nom_archive
+    
+    # ===== SITE CLIENT - PARAMÈTRES =====
+    def get_parametre_site_client(self, cle: str, defaut: str = "") -> str:
+        """Récupère un paramètre du site client"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT valeur FROM parametres_site_client WHERE cle = ?", (cle,))
+        result = cursor.fetchone()
+        conn.close()
+        return result['valeur'] if result else defaut
+    
+    def set_parametre_site_client(self, cle: str, valeur: str):
+        """Met à jour un paramètre du site client"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE parametres_site_client SET valeur = ?, updated_at = CURRENT_TIMESTAMP WHERE cle = ?",
+            (valeur, cle)
+        )
+        conn.commit()
+        conn.close()
+    
+    def get_all_parametres_site_client(self) -> List[Dict]:
+        """Récupère tous les paramètres site client"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM parametres_site_client ORDER BY cle")
+        parametres = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return parametres
+    
+    # ===== SITE CLIENT - CRÉNEAUX HORAIRES =====
+    def get_creneaux_disponibles(self, jour_semaine: str = None) -> List[Dict]:
+        """Récupère les créneaux horaires disponibles"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        if jour_semaine:
+            cursor.execute(
+                "SELECT * FROM creneaux_disponibles WHERE jour_semaine = ? AND actif = 1",
+                (jour_semaine,)
+            )
+        else:
+            cursor.execute("SELECT * FROM creneaux_disponibles")
+        creneaux = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return creneaux
+    
+    def update_creneau(self, jour_semaine: str, heure_debut: str, heure_fin: str, 
+                       intervalle: int, capacite: int, actif: int):
+        """Met à jour un créneau horaire"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE creneaux_disponibles 
+            SET heure_debut = ?, heure_fin = ?, intervalle_minutes = ?, 
+                capacite_simultanee = ?, actif = ?
+            WHERE jour_semaine = ?
+        """, (heure_debut, heure_fin, intervalle, capacite, actif, jour_semaine))
+        conn.commit()
+        conn.close()
+    
+    # ===== SITE CLIENT - RÉSERVATIONS WEB =====
+    def creer_reservation_web(self, nom: str, tel: str, email: str, service_id: int,
+                              date: str, heure: str, notes: str = "") -> str:
+        """Crée une réservation depuis le site client"""
+        import random
+        import string
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Générer code unique
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        
+        cursor.execute("""
+            INSERT INTO reservations_web 
+            (code_reservation, nom_client, tel_client, email_client, service_id, 
+             date_reservation, heure_reservation, notes_client)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (code, nom, tel, email, service_id, date, heure, notes))
+        
+        conn.commit()
+        conn.close()
+        return code
+    
+    def get_reservation_web_by_code(self, code: str) -> Optional[Dict]:
+        """Récupère une réservation par son code"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT r.*, s.nom as service_nom, s.prix, s.duree
+            FROM reservations_web r
+            JOIN services s ON r.service_id = s.id
+            WHERE r.code_reservation = ?
+        """, (code,))
+        result = cursor.fetchone()
+        conn.close()
+        return dict(result) if result else None
+    
+    def get_reservations_web_en_attente(self) -> List[Dict]:
+        """Récupère toutes les réservations web en attente"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT r.*, s.nom as service_nom, s.prix
+            FROM reservations_web r
+            JOIN services s ON r.service_id = s.id
+            WHERE r.statut = 'en_attente'
+            ORDER BY r.date_reservation, r.heure_reservation
+        """)
+        reservations = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return reservations
+    
+    def valider_reservation_web(self, code: str):
+        """Valide une réservation web"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE reservations_web 
+            SET statut = 'confirmee', confirmed_at = CURRENT_TIMESTAMP
+            WHERE code_reservation = ?
+        """, (code,))
+        conn.commit()
+        conn.close()
+    
+    def annuler_reservation_web(self, code: str):
+        """Annule une réservation web"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE reservations_web 
+            SET statut = 'annulee'
+            WHERE code_reservation = ?
+        """, (code,))
+        conn.commit()
+        conn.close()
+    
+    # ===== SITE CLIENT - AVIS =====
+    def ajouter_avis_client(self, nom: str, note: int, commentaire: str = "", 
+                            reservation_web_id: int = None) -> int:
+        """Ajoute un avis client"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO avis_clients (reservation_web_id, nom_client, note, commentaire)
+            VALUES (?, ?, ?, ?)
+        """, (reservation_web_id, nom, note, commentaire))
+        avis_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return avis_id
+    
+    def get_avis_visibles(self, limit: int = 10) -> List[Dict]:
+        """Récupère les avis visibles"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM avis_clients 
+            WHERE visible = 1 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        """, (limit,))
+        avis = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return avis
+    
+    def toggle_visibilite_avis(self, avis_id: int):
+        """Bascule la visibilité d'un avis"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE avis_clients 
+            SET visible = CASE WHEN visible = 1 THEN 0 ELSE 1 END
+            WHERE id = ?
+        """, (avis_id,))
+        conn.commit()
+        conn.close()

@@ -54,11 +54,12 @@ st.markdown("""
         border-left: 4px solid #667eea;
     }
     
-    /* Boutons */
+    /* Boutons - Forcer contraste pour Dark/Light */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
         transition: all 0.3s ease;
+        color: inherit !important;
     }
     
     .stButton>button:hover {
@@ -66,22 +67,39 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
     
-    /* Tabs personnalisés */
+    /* Tabs personnalisés - LIGHT MODE FORCÉ */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
     
     .stTabs [data-baseweb="tab"] {
         height: 50px;
-        background-color: #f0f2f6;
+        background-color: #e8eaf6 !important;
         border-radius: 8px;
         padding: 0 24px;
         font-weight: 600;
+        color: #262730 !important;
+        border: 1px solid #d1d5db !important;
     }
     
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        border: none !important;
+    }
+    
+    /* Forcer texte noir sur onglets non sélectionnés */
+    .stTabs [data-baseweb="tab"]:not([aria-selected="true"]) span,
+    .stTabs [data-baseweb="tab"]:not([aria-selected="true"]) p,
+    .stTabs [data-baseweb="tab"]:not([aria-selected="true"]) div {
+        color: #262730 !important;
+    }
+    
+    /* Forcer texte blanc sur onglet sélectionné */
+    .stTabs [aria-selected="true"] span,
+    .stTabs [aria-selected="true"] p,
+    .stTabs [aria-selected="true"] div {
+        color: white !important;
     }
     
     /* Tables */
@@ -193,6 +211,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
         "💰 Paiements",
         "📦 Stock",
         "📊 Rapports",
+        "🌐 Site Client",
         "⚙️ Mon Profil"
     ])
     
@@ -1358,8 +1377,274 @@ WashAfrique Pro - Gestion Station de Lavage
                 with st.expander("👁️ Prévisualiser le rapport"):
                     st.text(rapport)
     
-    # ===== ONGLET 9: PROFIL PROPRIÉTAIRE =====
+    # ===== ONGLET 8: SITE CLIENT =====
     with tabs[8]:
+        st.header("🌐 Contrôle Site Client")
+        
+        st.info("""
+        💡 **Site de réservation en ligne pour vos clients**
+        
+        - Catalogue de services visible publiquement
+        - Réservations 24/7 depuis leur téléphone
+        - Confirmations automatiques par code
+        - Gestion centralisée depuis votre espace admin
+        """)
+        
+        sub_tabs_site = st.tabs(["⚙️ Paramètres", "⏰ Horaires", "📋 Réservations Web", "⭐ Avis Clients", "🚀 Lancer Site"])
+        
+        with sub_tabs_site[0]:
+            st.subheader("⚙️ Paramètres du Site Client")
+            
+            parametres = st.session_state.db.get_all_parametres_site_client()
+            
+            with st.form("parametres_site_client"):
+                # Site actif
+                site_actif_val = st.session_state.db.get_parametre_site_client('site_actif', '1') == '1'
+                site_actif = st.checkbox("🌐 Site client activé", value=site_actif_val,
+                                        help="Désactiver pour maintenance")
+                
+                reservation_active_val = st.session_state.db.get_parametre_site_client('reservation_active', '1') == '1'
+                reservation_active = st.checkbox("📅 Autoriser réservations en ligne", value=reservation_active_val)
+                
+                st.markdown("---")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**🏢 Informations entreprise**")
+                    nom_site = st.text_input(
+                        "Nom entreprise",
+                        value=st.session_state.db.get_parametre_site_client('nom_entreprise_site', 'WashAfrique Pro')
+                    )
+                    slogan_site = st.text_input(
+                        "Slogan",
+                        value=st.session_state.db.get_parametre_site_client('slogan', 'Votre voiture mérite le meilleur')
+                    )
+                    texte_accueil = st.text_area(
+                        "Texte page d'accueil",
+                        value=st.session_state.db.get_parametre_site_client('texte_accueil', 'Réservez votre lavage en ligne'),
+                        height=100
+                    )
+                
+                with col2:
+                    st.markdown("**📞 Contact**")
+                    tel_site = st.text_input(
+                        "Téléphone",
+                        value=st.session_state.db.get_parametre_site_client('telephone_contact', '+225 XX XX XX XX')
+                    )
+                    email_site = st.text_input(
+                        "Email",
+                        value=st.session_state.db.get_parametre_site_client('email_contact', 'contact@washafrique.com')
+                    )
+                    adresse_site = st.text_input(
+                        "Adresse",
+                        value=st.session_state.db.get_parametre_site_client('adresse', 'Abidjan, Côte d\'Ivoire')
+                    )
+                
+                st.markdown("---")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    couleur_site = st.color_picker(
+                        "🎨 Couleur principale",
+                        value=st.session_state.db.get_parametre_site_client('couleur_principale', '#667eea')
+                    )
+                
+                with col2:
+                    delai_min = st.number_input(
+                        "⏱️ Délai min réservation (heures)",
+                        min_value=0,
+                        max_value=72,
+                        value=int(st.session_state.db.get_parametre_site_client('delai_min_reservation', '2')),
+                        help="Heures minimum avant qu'un client puisse réserver"
+                    )
+                
+                if st.form_submit_button("💾 Enregistrer", use_container_width=True, type="primary"):
+                    st.session_state.db.set_parametre_site_client('site_actif', '1' if site_actif else '0')
+                    st.session_state.db.set_parametre_site_client('reservation_active', '1' if reservation_active else '0')
+                    st.session_state.db.set_parametre_site_client('nom_entreprise_site', nom_site)
+                    st.session_state.db.set_parametre_site_client('slogan', slogan_site)
+                    st.session_state.db.set_parametre_site_client('texte_accueil', texte_accueil)
+                    st.session_state.db.set_parametre_site_client('telephone_contact', tel_site)
+                    st.session_state.db.set_parametre_site_client('email_contact', email_site)
+                    st.session_state.db.set_parametre_site_client('adresse', adresse_site)
+                    st.session_state.db.set_parametre_site_client('couleur_principale', couleur_site)
+                    st.session_state.db.set_parametre_site_client('delai_min_reservation', str(delai_min))
+                    
+                    st.success("✅ Paramètres du site client mis à jour !")
+                    st.balloons()
+        
+        with sub_tabs_site[1]:
+            st.subheader("⏰ Horaires de Réservation")
+            
+            st.info("Définissez les créneaux horaires disponibles pour les réservations en ligne")
+            
+            creneaux = st.session_state.db.get_creneaux_disponibles()
+            
+            jours = {
+                'lundi': 'Lundi',
+                'mardi': 'Mardi',
+                'mercredi': 'Mercredi',
+                'jeudi': 'Jeudi',
+                'vendredi': 'Vendredi',
+                'samedi': 'Samedi',
+                'dimanche': 'Dimanche'
+            }
+            
+            for jour_key, jour_nom in jours.items():
+                creneau = next((c for c in creneaux if c['jour_semaine'] == jour_key), None)
+                
+                if creneau:
+                    with st.expander(f"📅 {jour_nom}", expanded=False):
+                        with st.form(f"creneau_{jour_key}"):
+                            actif = st.checkbox("Ouvert", value=bool(creneau['actif']))
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                heure_debut = st.time_input(
+                                    "Heure début",
+                                    value=datetime.strptime(creneau['heure_debut'], "%H:%M").time() if actif else datetime.strptime("08:00", "%H:%M").time()
+                                )
+                            with col2:
+                                heure_fin = st.time_input(
+                                    "Heure fin",
+                                    value=datetime.strptime(creneau['heure_fin'], "%H:%M").time() if actif else datetime.strptime("18:00", "%H:%M").time()
+                                )
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                intervalle = st.selectbox(
+                                    "Intervalle (min)",
+                                    options=[15, 30, 45, 60],
+                                    index=[15, 30, 45, 60].index(creneau['intervalle_minutes'])
+                                )
+                            with col2:
+                                capacite = st.number_input(
+                                    "Capacité simultanée",
+                                    min_value=0,
+                                    max_value=10,
+                                    value=creneau['capacite_simultanee']
+                                )
+                            
+                            if st.form_submit_button("💾 Enregistrer", use_container_width=True):
+                                st.session_state.db.update_creneau(
+                                    jour_semaine=jour_key,
+                                    heure_debut=heure_debut.strftime("%H:%M"),
+                                    heure_fin=heure_fin.strftime("%H:%M"),
+                                    intervalle=intervalle,
+                                    capacite=capacite,
+                                    actif=1 if actif else 0
+                                )
+                                st.success(f"✅ Horaires {jour_nom} mis à jour !")
+        
+        with sub_tabs_site[2]:
+            st.subheader("📋 Réservations Web en Attente")
+            
+            reservations_web = st.session_state.db.get_reservations_web_en_attente()
+            
+            if reservations_web:
+                st.write(f"**{len(reservations_web)} réservation(s) en attente de validation**")
+                
+                for resa in reservations_web:
+                    with st.expander(
+                        f"🔖 {resa['code_reservation']} | {resa['nom_client']} | {resa['date_reservation']} à {resa['heure_reservation']}",
+                        expanded=False
+                    ):
+                        col_info, col_actions = st.columns([2, 1])
+                        
+                        with col_info:
+                            st.write(f"**👤 Client:** {resa['nom_client']}")
+                            st.write(f"**📱 Téléphone:** {resa['tel_client']}")
+                            if resa.get('email_client'):
+                                st.write(f"**📧 Email:** {resa['email_client']}")
+                            st.write(f"**🧼 Service:** {resa['service_nom']}")
+                            st.write(f"**💰 Prix:** {format_fcfa(resa['prix'])}")
+                            st.write(f"**📅 Date:** {resa['date_reservation']}")
+                            st.write(f"**⏰ Heure:** {resa['heure_reservation']}")
+                            if resa.get('notes_client'):
+                                st.info(f"📝 Notes: {resa['notes_client']}")
+                        
+                        with col_actions:
+                            if st.button("✅ Valider", key=f"valider_{resa['code_reservation']}", use_container_width=True, type="primary"):
+                                st.session_state.db.valider_reservation_web(resa['code_reservation'])
+                                st.success("✅ Réservation validée !")
+                                st.rerun()
+                            
+                            if st.button("❌ Annuler", key=f"annuler_{resa['code_reservation']}", use_container_width=True):
+                                st.session_state.db.annuler_reservation_web(resa['code_reservation'])
+                                st.warning("❌ Réservation annulée")
+                                st.rerun()
+            else:
+                st.info("Aucune réservation web en attente")
+        
+        with sub_tabs_site[3]:
+            st.subheader("⭐ Gestion des Avis Clients")
+            
+            avis_tous = st.session_state.db.get_avis_visibles(limit=100)
+            
+            if avis_tous:
+                for avis in avis_tous:
+                    stars = "⭐" * avis['note']
+                    col_avis, col_action = st.columns([4, 1])
+                    
+                    with col_avis:
+                        st.markdown(f"**{avis['nom_client']}** {stars}")
+                        st.write(avis.get('commentaire', 'Aucun commentaire'))
+                        st.caption(f"📅 {avis['created_at'][:10]}")
+                    
+                    with col_action:
+                        if st.button("👁️ Masquer" if avis['visible'] else "✅ Afficher", 
+                                    key=f"toggle_avis_{avis['id']}", 
+                                    use_container_width=True):
+                            st.session_state.db.toggle_visibilite_avis(avis['id'])
+                            st.rerun()
+                    
+                    st.markdown("---")
+            else:
+                st.info("Aucun avis client pour le moment")
+        
+        with sub_tabs_site[4]:
+            st.subheader("🚀 Lancer le Site Client")
+            
+            st.success("""
+            ✅ **Votre site client est prêt !**
+            
+            Pour le lancer :
+            1. Ouvrez un terminal
+            2. Exécutez : `streamlit run app_client.py`
+            3. Partagez l'URL avec vos clients
+            
+            📱 **URL locale** : http://localhost:8502
+            """)
+            
+            st.markdown("---")
+            
+            st.info("""
+            **💡 Pour déployer en ligne (accessible partout) :**
+            
+            1. Créez un compte sur [Streamlit Cloud](https://streamlit.io/cloud)
+            2. Connectez votre repo GitHub `WashAfrique`
+            3. Déployez `app_client.py` en tant qu'app séparée
+            4. Obtenez une URL publique du type : `https://votre-entreprise.streamlit.app`
+            
+            **Avantages** :
+            - ✅ Accessible 24/7 depuis n'importe quel téléphone
+            - ✅ Gratuit pour 1 app publique
+            - ✅ Mise à jour automatique depuis GitHub
+            """)
+            
+            st.markdown("---")
+            
+            st.warning("""
+            ⚠️ **Important** : 
+            - Le site client et l'app admin partagent la **même base de données**
+            - Les modifications (services, prix) sont instantanément visibles sur le site client
+            - Vérifiez les paramètres avant d'activer les réservations publiques
+            """)
+    
+    # ===== ONGLET 9: PROFIL PROPRIÉTAIRE =====
+    with tabs[9]:
         st.header("⚙️ Mon Profil et Paramètres")
         
         sub_tabs = st.tabs(["👤 Informations", "🏢 Entreprise", "⏰ Horaires", "🔐 Sécurité", "🗑️ Gestion Données"])
