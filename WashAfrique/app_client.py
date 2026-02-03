@@ -15,6 +15,8 @@ st.set_page_config(
 # Initialisation base de données
 if "db" not in st.session_state:
     st.session_state.db = Database()
+    # S'assurer que toutes les tables existent
+    st.session_state.db.init_database()
 
 # Récupérer paramètres site
 nom_entreprise = st.session_state.db.get_parametre_site_client('nom_entreprise_site', 'WashAfrique Pro')
