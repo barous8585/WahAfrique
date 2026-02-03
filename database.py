@@ -76,8 +76,10 @@ class Database:
                 tel TEXT,
                 poste TEXT,
                 salaire REAL DEFAULT 0,
+                user_id INTEGER,
                 actif INTEGER DEFAULT 1,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
         
@@ -209,6 +211,35 @@ class Database:
                 envoyee INTEGER DEFAULT 0,
                 date_envoi TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table pointages (nouveau)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pointages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                date TEXT NOT NULL,
+                heure TEXT NOT NULL,
+                timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Table photos avant/après (pour TikTok, Instagram)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS photos_services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reservation_id INTEGER NOT NULL,
+                type_photo TEXT NOT NULL,
+                photo_data BLOB NOT NULL,
+                date_ajout TEXT DEFAULT CURRENT_TIMESTAMP,
+                employe_id INTEGER,
+                notes TEXT,
+                FOREIGN KEY (reservation_id) REFERENCES reservations (id),
+                FOREIGN KEY (employe_id) REFERENCES users (id)
             )
         ''')
         
@@ -414,7 +445,11 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT r.*, c.nom as client_nom, c.tel as client_tel, c.vehicule,
+            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
+                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
+                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
+                   r.points_utilises, r.created_at,
+                   c.nom as client_nom, c.tel as client_tel, c.vehicule,
                    s.nom as service_nom, s.duree, s.points as service_points,
                    e.nom as employe_nom, p.nom as poste_nom
             FROM reservations r
@@ -433,7 +468,11 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT r.*, c.nom as client_nom, c.tel as client_tel, c.vehicule,
+            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
+                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
+                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
+                   r.points_utilises, r.created_at,
+                   c.nom as client_nom, c.tel as client_tel, c.vehicule,
                    s.nom as service_nom, s.prix, s.duree, s.points as service_points
             FROM reservations r
             LEFT JOIN clients c ON r.client_id = c.id
@@ -480,6 +519,24 @@ class Database:
         conn.commit()
         conn.close()
         return paiement_id
+    
+    def get_all_paiements(self) -> List[Dict]:
+        """Récupère tous les paiements avec infos clients et services"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.id, p.reservation_id, p.montant, p.methode as methode_paiement, 
+                   p.date_paiement, p.notes,
+                   c.nom as client_nom, s.nom as service_nom
+            FROM paiements p
+            LEFT JOIN reservations r ON p.reservation_id = r.id
+            LEFT JOIN clients c ON r.client_id = c.id
+            LEFT JOIN services s ON r.service_id = s.id
+            ORDER BY p.date_paiement DESC
+        """)
+        paiements = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return paiements
     
     # ===== CODES PROMO =====
     def ajouter_code_promo(
@@ -539,15 +596,15 @@ class Database:
         cursor.execute("SELECT COUNT(*) as count FROM reservations WHERE date = ?", (today,))
         rdv_today = cursor.fetchone()['count']
         
-        # Revenus aujourd'hui
+        # Revenus aujourd'hui - Utilise la table paiements
         cursor.execute(
-            "SELECT SUM(montant_paye) as total FROM reservations WHERE date = ? AND statut != 'annule'",
+            "SELECT SUM(montant) as total FROM paiements WHERE DATE(date_paiement) = ?",
             (today,)
         )
         revenus_today = cursor.fetchone()['total'] or 0
         
-        # Revenus total
-        cursor.execute("SELECT SUM(montant_paye) as total FROM reservations WHERE statut != 'annule'")
+        # Revenus total - Utilise la table paiements
+        cursor.execute("SELECT SUM(montant) as total FROM paiements")
         revenus_total = cursor.fetchone()['total'] or 0
         
         # Total clients
@@ -586,11 +643,10 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT date, SUM(montant_paye) as revenus, COUNT(*) as nb_rdv
-            FROM reservations
-            WHERE statut != 'annule'
-            GROUP BY date
-            ORDER BY date DESC
+            SELECT DATE(date_paiement) as date, SUM(montant) as revenus, COUNT(*) as nb_rdv
+            FROM paiements
+            GROUP BY DATE(date_paiement)
+            ORDER BY DATE(date_paiement) DESC
             LIMIT ?
         """, (limit,))
         data = [dict(row) for row in cursor.fetchall()]
@@ -601,10 +657,10 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.nom, COUNT(*) as nb_reservations, SUM(r.montant_paye) as revenus
-            FROM reservations r
+            SELECT s.nom, COUNT(*) as nb_reservations, SUM(p.montant) as revenus
+            FROM paiements p
+            JOIN reservations r ON p.reservation_id = r.id
             JOIN services s ON r.service_id = s.id
-            WHERE r.statut != 'annule'
             GROUP BY r.service_id
             ORDER BY nb_reservations DESC
         """)
@@ -720,3 +776,353 @@ class Database:
         
         conn.close()
         return data
+    
+    # ===== GESTION COMPTES EMPLOYÉS =====
+    def creer_compte_employe(self, username: str, password: str, email: str = "") -> int:
+        """Crée un compte utilisateur pour un employé"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        try:
+            cursor.execute(
+                "INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
+                (username, password_hash, email, "employe")
+            )
+            user_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return user_id
+        except sqlite3.IntegrityError:
+            conn.close()
+            return -1  # Username déjà existant
+    
+    def lier_employe_user(self, employe_id: int, user_id: int):
+        """Lie un employé à son compte utilisateur"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE employes SET user_id = ? WHERE id = ?",
+            (user_id, employe_id)
+        )
+        conn.commit()
+        conn.close()
+    
+    def supprimer_employe(self, employe_id: int):
+        """Désactive un employé (soft delete)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE employes SET actif = 0 WHERE id = ?", (employe_id,))
+        conn.commit()
+        conn.close()
+    
+    def modifier_employe(self, employe_id: int, nom: str = None, tel: str = None, poste: str = None, salaire: float = None):
+        """Modifie les informations d'un employé"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        updates = []
+        params = []
+        
+        if nom:
+            updates.append("nom = ?")
+            params.append(nom)
+        if tel:
+            updates.append("tel = ?")
+            params.append(tel)
+        if poste:
+            updates.append("poste = ?")
+            params.append(poste)
+        if salaire is not None:
+            updates.append("salaire = ?")
+            params.append(salaire)
+        
+        if updates:
+            params.append(employe_id)
+            query = f"UPDATE employes SET {', '.join(updates)} WHERE id = ?"
+            cursor.execute(query, params)
+            conn.commit()
+        
+        conn.close()
+    
+    # ===== POINTAGES =====
+    def enregistrer_pointage(self, user_id: int, type_pointage: str, notes: str = "") -> int:
+        """Enregistre un pointage (arrivée/départ)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        now = datetime.now()
+        date_str = now.strftime("%Y-%m-%d")
+        heure_str = now.strftime("%H:%M")
+        
+        cursor.execute(
+            "INSERT INTO pointages (user_id, type, date, heure, notes) VALUES (?, ?, ?, ?, ?)",
+            (user_id, type_pointage, date_str, heure_str, notes)
+        )
+        pointage_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return pointage_id
+    
+    def get_pointages_jour(self, date_str: str) -> List[Dict]:
+        """Récupère tous les pointages d'une date"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.*, u.username, u.role
+            FROM pointages p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.date = ?
+            ORDER BY p.heure
+        """, (date_str,))
+        pointages = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return pointages
+    
+    def get_pointages_employe(self, user_id: int, date_debut: str = None, date_fin: str = None) -> List[Dict]:
+        """Récupère les pointages d'un employé sur une période"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if date_debut and date_fin:
+            cursor.execute("""
+                SELECT * FROM pointages
+                WHERE user_id = ? AND date BETWEEN ? AND ?
+                ORDER BY date DESC, heure DESC
+            """, (user_id, date_debut, date_fin))
+        else:
+            cursor.execute("""
+                SELECT * FROM pointages
+                WHERE user_id = ?
+                ORDER BY date DESC, heure DESC
+                LIMIT 30
+            """, (user_id,))
+        
+        pointages = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return pointages
+    
+    def calculer_heures_travail(self, user_id: int, date_str: str) -> Dict:
+        """Calcule les heures de travail d'un employé pour une date"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT type, heure FROM pointages
+            WHERE user_id = ? AND date = ?
+            ORDER BY heure
+        """, (user_id, date_str))
+        
+        pointages = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        if not pointages:
+            return {"heures_travail": 0, "arrivee": None, "depart": None}
+        
+        arrivee = next((p["heure"] for p in pointages if p["type"] == "arrivee"), None)
+        depart = next((p["heure"] for p in pointages if p["type"] == "depart"), None)
+        
+        heures_travail = 0
+        if arrivee and depart:
+            h_arr = datetime.strptime(arrivee, "%H:%M")
+            h_dep = datetime.strptime(depart, "%H:%M")
+            delta = h_dep - h_arr
+            heures_travail = delta.total_seconds() / 3600
+        
+        return {
+            "heures_travail": round(heures_travail, 2),
+            "arrivee": arrivee,
+            "depart": depart
+        }
+    
+    # ===== GESTION PHOTOS AVANT/APRÈS =====
+    def ajouter_photo_service(self, reservation_id: int, type_photo: str, photo_data: bytes, employe_id: int = None, notes: str = "") -> int:
+        """Ajoute une photo (avant ou après) pour un service"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "INSERT INTO photos_services (reservation_id, type_photo, photo_data, employe_id, notes) VALUES (?, ?, ?, ?, ?)",
+            (reservation_id, type_photo, photo_data, employe_id, notes)
+        )
+        photo_id = cursor.lastrowid
+        
+        conn.commit()
+        conn.close()
+        return photo_id
+    
+    def get_photos_service(self, reservation_id: int, type_photo: str = None) -> List[Dict]:
+        """Récupère les photos d'un service (toutes ou filtrées par type)"""
+        # Validation de l'ID
+        if not reservation_id or reservation_id is None:
+            return []
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if type_photo:
+            cursor.execute(
+                "SELECT * FROM photos_services WHERE reservation_id = ? AND type_photo = ? ORDER BY date_ajout",
+                (reservation_id, type_photo)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM photos_services WHERE reservation_id = ? ORDER BY type_photo, date_ajout",
+                (reservation_id,)
+            )
+        
+        photos = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return photos
+    
+    def supprimer_photo_service(self, photo_id: int):
+        """Supprime une photo spécifique"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM photos_services WHERE id = ?", (photo_id,))
+        conn.commit()
+        conn.close()
+    
+    def get_toutes_photos_services(self, limit: int = 100) -> List[Dict]:
+        """Récupère toutes les photos des services (pour galerie) groupées par réservation"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT ps.reservation_id, r.date, s.nom as service_nom, c.nom as client_nom, c.vehicule
+            FROM photos_services ps
+            JOIN reservations r ON ps.reservation_id = r.id
+            JOIN services s ON r.service_id = s.id
+            JOIN clients c ON r.client_id = c.id
+            ORDER BY r.date DESC
+            LIMIT ?
+        """, (limit,))
+        reservations = [dict(row) for row in cursor.fetchall()]
+        
+        # Pour chaque réservation, récupérer toutes les photos
+        for res in reservations:
+            cursor.execute("""
+                SELECT id, type_photo, photo_data, date_ajout
+                FROM photos_services
+                WHERE reservation_id = ?
+                ORDER BY type_photo, date_ajout
+            """, (res['reservation_id'],))
+            res['photos'] = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        return reservations
+    
+    # ===== GESTION PARAMÈTRES ENTREPRISE =====
+    
+    def get_parametre(self, cle: str, default: str = None) -> Optional[str]:
+        """Récupère un paramètre depuis la base"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT valeur FROM parametres WHERE cle = ?", (cle,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return result['valeur']
+        return default
+    
+    def set_parametre(self, cle: str, valeur: str):
+        """Enregistre ou met à jour un paramètre"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO parametres (cle, valeur)
+            VALUES (?, ?)
+        """, (cle, valeur))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_info_entreprise(self) -> Dict:
+        """Récupère toutes les informations de l'entreprise"""
+        return {
+            'nom': self.get_parametre('nom_entreprise', 'WashAfrique Pro'),
+            'description': self.get_parametre('description_entreprise', ''),
+            'telephone': self.get_parametre('tel_entreprise', ''),
+            'email': self.get_parametre('email_entreprise', ''),
+            'adresse': self.get_parametre('adresse_entreprise', ''),
+            'site_web': self.get_parametre('site_web_entreprise', '')
+        }
+    
+    def set_info_entreprise(self, nom: str, description: str, telephone: str, 
+                           email: str, adresse: str, site_web: str):
+        """Enregistre les informations de l'entreprise"""
+        self.set_parametre('nom_entreprise', nom)
+        self.set_parametre('description_entreprise', description)
+        self.set_parametre('tel_entreprise', telephone)
+        self.set_parametre('email_entreprise', email)
+        self.set_parametre('adresse_entreprise', adresse)
+        self.set_parametre('site_web_entreprise', site_web)
+    
+    # ===== SUPPRESSION HISTORIQUE =====
+    
+    def supprimer_historique_services(self, date_avant: str = None):
+        """Supprime l'historique des services (optionnel: avant une date)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if date_avant:
+            # Supprimer services avant une date spécifique
+            cursor.execute("DELETE FROM reservations WHERE date_reservation < ?", (date_avant,))
+            cursor.execute("DELETE FROM paiements WHERE DATE(date_paiement) < ?", (date_avant,))
+        else:
+            # Supprimer TOUT l'historique
+            cursor.execute("DELETE FROM reservations")
+            cursor.execute("DELETE FROM paiements")
+            cursor.execute("DELETE FROM photos_services")
+            cursor.execute("DELETE FROM historique_fidelite")
+        
+        lignes_supprimees = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return lignes_supprimees
+    
+    def reinitialiser_ca(self):
+        """Réinitialise le chiffre d'affaires (supprime tous les paiements)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM paiements")
+        nb_paiements = cursor.rowcount
+        
+        # Réinitialiser montant_paye des réservations
+        cursor.execute("UPDATE reservations SET montant_paye = 0, statut = 'en_attente'")
+        
+        conn.commit()
+        conn.close()
+        return nb_paiements
+    
+    def reinitialiser_clients(self):
+        """Réinitialise points fidélité et total dépenses des clients"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("UPDATE clients SET points_fidelite = 0, total_depense = 0")
+        cursor.execute("DELETE FROM historique_fidelite")
+        
+        conn.commit()
+        conn.close()
+    
+    def archiver_et_reinitialiser(self, nom_archive: str = None):
+        """Archive les données actuelles puis réinitialise tout"""
+        import shutil
+        from datetime import datetime
+        
+        # Créer nom archive avec timestamp
+        if not nom_archive:
+            nom_archive = f"washafrique_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        
+        # Copier la base actuelle vers archive
+        shutil.copy2(self.db_name, nom_archive)
+        
+        # Réinitialiser
+        self.reinitialiser_ca()
+        self.supprimer_historique_services()
+        self.reinitialiser_clients()
+        
+        return nom_archive
