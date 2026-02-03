@@ -1,1406 +1,299 @@
-import sqlite3
-import json
-from datetime import datetime
-from typing import List, Dict, Optional
-import hashlib
+"""
+Adaptateur PostgreSQL pour WashAfrique
+Remplace SQLite par PostgreSQL (Supabase)
+"""
 
-class Database:
-    def __init__(self, db_name: str = "washafrique.db"):
-        self.db_name = db_name
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from typing import Optional, List, Dict, Any
+import streamlit as st
+from datetime import datetime
+
+class DatabasePostgres:
+    """Classe Database adaptée pour PostgreSQL"""
+    
+    def __init__(self):
+        """Initialise la connexion PostgreSQL"""
+        self.config = self._get_config()
         self.init_database()
     
+    def _get_config(self) -> dict:
+        """Récupère configuration depuis st.secrets ou db_config.py"""
+        try:
+            # Priorité 1: Streamlit Secrets (pour Cloud)
+            if hasattr(st, 'secrets') and 'postgres' in st.secrets:
+                return {
+                    'host': st.secrets.postgres.host,
+                    'port': st.secrets.postgres.port,
+                    'database': st.secrets.postgres.database,
+                    'user': st.secrets.postgres.user,
+                    'password': st.secrets.postgres.password
+                }
+        except:
+            pass
+        
+        # Priorité 2: Fichier local (pour développement)
+        try:
+            from db_config import DB_CONFIG
+            return DB_CONFIG
+        except ImportError:
+            raise Exception(
+                "❌ Configuration base de données manquante!\n\n"
+                "Pour développement local:\n"
+                "1. Copiez db_config.py.template → db_config.py\n"
+                "2. Remplissez vos credentials Supabase\n\n"
+                "Pour Streamlit Cloud:\n"
+                "1. Settings → Secrets\n"
+                "2. Ajoutez section [postgres] avec credentials"
+            )
+    
     def get_connection(self):
-        conn = sqlite3.connect(self.db_name)
-        conn.row_factory = sqlite3.Row
-        return conn
+        """Crée une connexion PostgreSQL"""
+        try:
+            conn = psycopg2.connect(
+                host=self.config['host'],
+                port=self.config['port'],
+                database=self.config['database'],
+                user=self.config['user'],
+                password=self.config['password'],
+                cursor_factory=RealDictCursor
+            )
+            return conn
+        except psycopg2.OperationalError as e:
+            raise Exception(f"❌ Erreur connexion PostgreSQL: {str(e)}")
     
     def init_database(self):
-        """Initialise toutes les tables de la base de données"""
+        """
+        Crée toutes les tables PostgreSQL
+        Adapté depuis database.py (SQLite → PostgreSQL)
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Table utilisateurs (admins)
+        # Table users
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                email TEXT,
-                role TEXT DEFAULT 'admin',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Table clients
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT NOT NULL,
-                tel TEXT UNIQUE NOT NULL,
-                email TEXT,
-                vehicule TEXT,
-                points_fidelite INTEGER DEFAULT 0,
-                total_depense REAL DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                role VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         # Table services
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS services (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT NOT NULL,
-                prix REAL NOT NULL,
+                id SERIAL PRIMARY KEY,
+                nom VARCHAR(200) NOT NULL,
+                prix DECIMAL(10, 2) NOT NULL,
                 duree INTEGER NOT NULL,
-                points INTEGER DEFAULT 1,
-                actif INTEGER DEFAULT 1,
                 description TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                actif BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Table postes de lavage
+        # Table clients
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS postes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT NOT NULL,
-                actif INTEGER DEFAULT 1
+            CREATE TABLE IF NOT EXISTS clients (
+                id SERIAL PRIMARY KEY,
+                nom VARCHAR(200) NOT NULL,
+                tel VARCHAR(20) NOT NULL UNIQUE,
+                email VARCHAR(200),
+                vehicule VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Table employés
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS employes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT NOT NULL,
-                tel TEXT,
-                poste TEXT,
-                salaire REAL DEFAULT 0,
-                user_id INTEGER,
-                actif INTEGER DEFAULT 1,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # Table réservations
+        # Table reservations
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reservations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id INTEGER NOT NULL,
-                service_id INTEGER NOT NULL,
-                poste_id INTEGER,
-                employe_id INTEGER,
-                date TEXT NOT NULL,
-                heure TEXT NOT NULL,
-                statut TEXT DEFAULT 'en_attente',
-                montant REAL NOT NULL,
-                montant_paye REAL DEFAULT 0,
-                methode_paiement TEXT,
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id),
+                service_id INTEGER REFERENCES services(id),
+                employe_id INTEGER REFERENCES users(id),
+                date DATE NOT NULL,
+                heure TIME NOT NULL,
+                statut VARCHAR(20) DEFAULT 'en_cours',
                 notes TEXT,
-                code_promo TEXT,
-                reduction REAL DEFAULT 0,
-                points_utilises INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (client_id) REFERENCES clients (id),
-                FOREIGN KEY (service_id) REFERENCES services (id),
-                FOREIGN KEY (poste_id) REFERENCES postes (id),
-                FOREIGN KEY (employe_id) REFERENCES employes (id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         # Table paiements
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS paiements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                reservation_id INTEGER NOT NULL,
-                montant REAL NOT NULL,
-                methode TEXT NOT NULL,
-                date_paiement TEXT DEFAULT CURRENT_TIMESTAMP,
-                notes TEXT,
-                FOREIGN KEY (reservation_id) REFERENCES reservations (id)
+                id SERIAL PRIMARY KEY,
+                reservation_id INTEGER REFERENCES reservations(id),
+                montant DECIMAL(10, 2) NOT NULL,
+                methode VARCHAR(50) NOT NULL,
+                date_paiement TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT
             )
         ''')
         
-        # Table codes promo
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS codes_promo (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code TEXT UNIQUE NOT NULL,
-                type TEXT NOT NULL,
-                valeur REAL NOT NULL,
-                date_debut TEXT,
-                date_fin TEXT,
-                utilisations_max INTEGER DEFAULT -1,
-                utilisations_actuelles INTEGER DEFAULT 0,
-                actif INTEGER DEFAULT 1,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Table récompenses fidélité
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS recompenses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT NOT NULL,
-                points_requis INTEGER NOT NULL,
-                reduction REAL NOT NULL,
-                type TEXT DEFAULT 'pourcentage',
-                actif INTEGER DEFAULT 1
-            )
-        ''')
-        
-        # Table historique fidélité
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS historique_fidelite (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id INTEGER NOT NULL,
-                reservation_id INTEGER,
-                points INTEGER NOT NULL,
-                type TEXT NOT NULL,
-                description TEXT,
-                date TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (client_id) REFERENCES clients (id),
-                FOREIGN KEY (reservation_id) REFERENCES reservations (id)
-            )
-        ''')
-        
-        # Table produits/stock
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS produits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT NOT NULL,
-                quantite INTEGER DEFAULT 0,
-                seuil_alerte INTEGER DEFAULT 10,
-                unite TEXT DEFAULT 'unité',
-                prix_unitaire REAL DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Table mouvements stock
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS mouvements_stock (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                produit_id INTEGER NOT NULL,
-                quantite INTEGER NOT NULL,
-                type TEXT NOT NULL,
-                prix REAL DEFAULT 0,
-                notes TEXT,
-                date TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (produit_id) REFERENCES produits (id)
-            )
-        ''')
-        
-        # Table paramètres
+        # Table parametres
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS parametres (
-                cle TEXT PRIMARY KEY,
-                valeur TEXT NOT NULL
+                id SERIAL PRIMARY KEY,
+                cle VARCHAR(100) UNIQUE NOT NULL,
+                valeur TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Table notifications
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS notifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                type TEXT NOT NULL,
-                titre TEXT NOT NULL,
-                message TEXT NOT NULL,
-                destinataire TEXT,
-                envoyee INTEGER DEFAULT 0,
-                date_envoi TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Table pointages (nouveau)
+        # Table pointages
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS pointages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                type TEXT NOT NULL,
-                date TEXT NOT NULL,
-                heure TEXT NOT NULL,
-                timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-                notes TEXT,
-                FOREIGN KEY (user_id) REFERENCES users (id)
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id),
+                type VARCHAR(20) NOT NULL,
+                date DATE NOT NULL,
+                heure TIME NOT NULL,
+                notes TEXT
             )
         ''')
         
-        # Table photos avant/après (pour TikTok, Instagram)
+        # Table photos_services
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS photos_services (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                reservation_id INTEGER NOT NULL,
-                type_photo TEXT NOT NULL,
-                photo_data BLOB NOT NULL,
-                date_ajout TEXT DEFAULT CURRENT_TIMESTAMP,
-                employe_id INTEGER,
-                notes TEXT,
-                FOREIGN KEY (reservation_id) REFERENCES reservations (id),
-                FOREIGN KEY (employe_id) REFERENCES users (id)
+                id SERIAL PRIMARY KEY,
+                reservation_id INTEGER REFERENCES reservations(id),
+                type_photo VARCHAR(20) NOT NULL,
+                photo_data BYTEA NOT NULL,
+                date_ajout TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                employe_id INTEGER REFERENCES users(id),
+                notes TEXT
             )
         ''')
         
-        # Table paramètres site client
+        # ===== TABLES SITE CLIENT =====
+        
+        # Table parametres_site_client
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS parametres_site_client (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cle TEXT UNIQUE NOT NULL,
+                id SERIAL PRIMARY KEY,
+                cle VARCHAR(100) UNIQUE NOT NULL,
                 valeur TEXT,
-                type TEXT DEFAULT 'texte',
+                type VARCHAR(50) DEFAULT 'texte',
                 description TEXT,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Table horaires disponibles réservation web
+        # Table creneaux_disponibles
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS creneaux_disponibles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                jour_semaine TEXT NOT NULL,
-                heure_debut TEXT NOT NULL,
-                heure_fin TEXT NOT NULL,
+                id SERIAL PRIMARY KEY,
+                jour_semaine VARCHAR(20) NOT NULL,
+                heure_debut TIME NOT NULL,
+                heure_fin TIME NOT NULL,
                 intervalle_minutes INTEGER DEFAULT 30,
                 capacite_simultanee INTEGER DEFAULT 2,
-                actif INTEGER DEFAULT 1
+                actif BOOLEAN DEFAULT TRUE
             )
         ''')
         
-        # Table réservations web (depuis site client)
+        # Table reservations_web
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reservations_web (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code_reservation TEXT UNIQUE NOT NULL,
-                nom_client TEXT NOT NULL,
-                tel_client TEXT NOT NULL,
-                email_client TEXT,
-                service_id INTEGER NOT NULL,
-                date_reservation TEXT NOT NULL,
-                heure_reservation TEXT NOT NULL,
-                statut TEXT DEFAULT 'en_attente',
+                id SERIAL PRIMARY KEY,
+                code_reservation VARCHAR(20) UNIQUE NOT NULL,
+                nom_client VARCHAR(200) NOT NULL,
+                tel_client VARCHAR(20) NOT NULL,
+                email_client VARCHAR(200),
+                service_id INTEGER REFERENCES services(id),
+                date_reservation DATE NOT NULL,
+                heure_reservation TIME NOT NULL,
+                statut VARCHAR(20) DEFAULT 'en_attente',
                 notes_client TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                confirmed_at TEXT,
-                FOREIGN KEY (service_id) REFERENCES services (id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                confirmed_at TIMESTAMP
             )
         ''')
         
-        # Table avis clients
+        # Table avis_clients
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS avis_clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                reservation_web_id INTEGER,
-                nom_client TEXT NOT NULL,
-                note INTEGER NOT NULL,
+                id SERIAL PRIMARY KEY,
+                reservation_web_id INTEGER REFERENCES reservations_web(id),
+                nom_client VARCHAR(200) NOT NULL,
+                note INTEGER NOT NULL CHECK (note BETWEEN 1 AND 5),
                 commentaire TEXT,
                 photo_url TEXT,
-                visible INTEGER DEFAULT 1,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (reservation_web_id) REFERENCES reservations_web (id)
+                visible BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         conn.commit()
         
-        # Créer utilisateur admin par défaut
-        cursor.execute("SELECT COUNT(*) as count FROM users")
+        # Initialiser données par défaut
+        self._init_default_data(cursor, conn)
+        
+        cursor.close()
+        conn.close()
+    
+    def _init_default_data(self, cursor, conn):
+        """Initialise données par défaut (admin, paramètres, etc.)"""
+        
+        # Vérifier si admin existe
+        cursor.execute("SELECT COUNT(*) as count FROM users WHERE username = 'admin'")
         if cursor.fetchone()['count'] == 0:
-            password_hash = hashlib.sha256("admin123".encode()).hexdigest()
             cursor.execute(
-                "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                ("admin", password_hash, "admin")
+                "INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
+                ('admin', 'admin123', 'admin')
             )
-            conn.commit()
         
-        # Créer poste par défaut
-        cursor.execute("SELECT COUNT(*) as count FROM postes")
-        if cursor.fetchone()['count'] == 0:
-            cursor.execute("INSERT INTO postes (nom, actif) VALUES ('Poste 1', 1), ('Poste 2', 1)")
-            conn.commit()
+        # Paramètres par défaut
+        params_defaut = [
+            ('nom_entreprise', 'WashAfrique Pro'),
+            ('heure_ouverture', '08:00'),
+            ('heure_fermeture', '19:00')
+        ]
         
-        # Créer récompenses par défaut
-        cursor.execute("SELECT COUNT(*) as count FROM recompenses")
-        if cursor.fetchone()['count'] == 0:
-            recompenses_defaut = [
-                ("Bronze - 5% OFF", 10, 5, "pourcentage"),
-                ("Silver - 10% OFF", 25, 10, "pourcentage"),
-                ("Gold - 15% OFF", 50, 15, "pourcentage"),
-                ("Platinum - 20% OFF", 100, 20, "pourcentage")
-            ]
-            cursor.executemany(
-                "INSERT INTO recompenses (nom, points_requis, reduction, type) VALUES (?, ?, ?, ?)",
-                recompenses_defaut
-            )
-            conn.commit()
-        
-        # Initialiser paramètres site client par défaut
-        cursor.execute("SELECT COUNT(*) as count FROM parametres_site_client")
-        if cursor.fetchone()['count'] == 0:
-            parametres_defaut = [
-                ("site_actif", "1", "boolean", "Site client activé/désactivé"),
-                ("nom_entreprise_site", "WashAfrique Pro", "texte", "Nom affiché sur site client"),
-                ("slogan", "Votre voiture mérite le meilleur", "texte", "Slogan page d'accueil"),
-                ("couleur_principale", "#667eea", "couleur", "Couleur principale site"),
-                ("telephone_contact", "+225 XX XX XX XX", "texte", "Numéro affiché"),
-                ("email_contact", "contact@washafrique.com", "texte", "Email contact"),
-                ("adresse", "Abidjan, Côte d'Ivoire", "texte", "Adresse entreprise"),
-                ("texte_accueil", "Réservez votre lavage en ligne", "textarea", "Texte page accueil"),
-                ("reservation_active", "1", "boolean", "Autoriser réservations"),
-                ("delai_min_reservation", "2", "nombre", "Heures min avant réservation"),
-                ("notif_email", "admin@washafrique.com", "texte", "Email notification réservations"),
-                ("notif_sms", "1", "boolean", "Activer SMS notification")
-            ]
-            cursor.executemany(
-                "INSERT INTO parametres_site_client (cle, valeur, type, description) VALUES (?, ?, ?, ?)",
-                parametres_defaut
-            )
-            conn.commit()
-        
-        # Initialiser créneaux horaires par défaut
-        cursor.execute("SELECT COUNT(*) as count FROM creneaux_disponibles")
-        if cursor.fetchone()['count'] == 0:
-            creneaux_defaut = [
-                ("lundi", "08:00", "18:00", 30, 2, 1),
-                ("mardi", "08:00", "18:00", 30, 2, 1),
-                ("mercredi", "08:00", "18:00", 30, 2, 1),
-                ("jeudi", "08:00", "18:00", 30, 2, 1),
-                ("vendredi", "08:00", "18:00", 30, 2, 1),
-                ("samedi", "08:00", "16:00", 30, 2, 1),
-                ("dimanche", "00:00", "00:00", 30, 0, 0)
-            ]
-            cursor.executemany(
-                "INSERT INTO creneaux_disponibles (jour_semaine, heure_debut, heure_fin, intervalle_minutes, capacite_simultanee, actif) VALUES (?, ?, ?, ?, ?, ?)",
-                creneaux_defaut
-            )
-            conn.commit()
-        
-        conn.close()
-    
-    # ===== USERS =====
-    def verify_user(self, username: str, password: str) -> Optional[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        cursor.execute(
-            "SELECT * FROM users WHERE username = ? AND password_hash = ?",
-            (username, password_hash)
-        )
-        user = cursor.fetchone()
-        conn.close()
-        return dict(user) if user else None
-    
-    # ===== CLIENTS =====
-    def ajouter_client(self, nom: str, tel: str, email: str = "", vehicule: str = "") -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO clients (nom, tel, email, vehicule) VALUES (?, ?, ?, ?)",
-            (nom, tel, email, vehicule)
-        )
-        client_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return client_id
-    
-    def get_client_by_tel(self, tel: str) -> Optional[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM clients WHERE tel = ?", (tel,))
-        client = cursor.fetchone()
-        conn.close()
-        return dict(client) if client else None
-    
-    def get_all_clients(self) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
-        clients = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return clients
-    
-    def update_client_points(self, client_id: int, points: int, operation: str = "add"):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        if operation == "add":
+        for cle, valeur in params_defaut:
             cursor.execute(
-                "UPDATE clients SET points_fidelite = points_fidelite + ? WHERE id = ?",
-                (points, client_id)
+                "INSERT INTO parametres (cle, valeur) VALUES (%s, %s) ON CONFLICT (cle) DO NOTHING",
+                (cle, valeur)
             )
-        else:
+        
+        # Paramètres site client
+        params_site_defaut = [
+            ("site_actif", "1", "boolean", "Site client activé/désactivé"),
+            ("nom_entreprise_site", "WashAfrique Pro", "texte", "Nom affiché sur site client"),
+            ("slogan", "Votre voiture mérite le meilleur", "texte", "Slogan page d'accueil"),
+            ("couleur_principale", "#667eea", "couleur", "Couleur principale site"),
+            ("telephone_contact", "+225 XX XX XX XX", "texte", "Numéro affiché"),
+            ("email_contact", "contact@washafrique.com", "texte", "Email contact"),
+            ("adresse", "Abidjan, Côte d'Ivoire", "texte", "Adresse entreprise"),
+            ("texte_accueil", "Réservez votre lavage en ligne", "textarea", "Texte page accueil"),
+            ("reservation_active", "1", "boolean", "Autoriser réservations"),
+            ("delai_min_reservation", "2", "nombre", "Heures min avant réservation")
+        ]
+        
+        for cle, valeur, type_param, description in params_site_defaut:
             cursor.execute(
-                "UPDATE clients SET points_fidelite = points_fidelite - ? WHERE id = ?",
-                (points, client_id)
+                """INSERT INTO parametres_site_client (cle, valeur, type, description) 
+                   VALUES (%s, %s, %s, %s) ON CONFLICT (cle) DO NOTHING""",
+                (cle, valeur, type_param, description)
             )
-        conn.commit()
-        conn.close()
-    
-    def update_client_depense(self, client_id: int, montant: float):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE clients SET total_depense = total_depense + ? WHERE id = ?",
-            (montant, client_id)
-        )
-        conn.commit()
-        conn.close()
-    
-    # ===== SERVICES =====
-    def ajouter_service(self, nom: str, prix: float, duree: int, points: int = 1, description: str = "") -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO services (nom, prix, duree, points, description) VALUES (?, ?, ?, ?, ?)",
-            (nom, prix, duree, points, description)
-        )
-        service_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return service_id
-    
-    def get_all_services(self, actif_only: bool = True) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        if actif_only:
-            cursor.execute("SELECT * FROM services WHERE actif = 1 ORDER BY prix")
-        else:
-            cursor.execute("SELECT * FROM services ORDER BY prix")
-        services = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return services
-    
-    def delete_service(self, service_id: int):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE services SET actif = 0 WHERE id = ?", (service_id,))
-        conn.commit()
-        conn.close()
-    
-    # ===== POSTES =====
-    def get_all_postes(self, actif_only: bool = True) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        if actif_only:
-            cursor.execute("SELECT * FROM postes WHERE actif = 1")
-        else:
-            cursor.execute("SELECT * FROM postes")
-        postes = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return postes
-    
-    # ===== EMPLOYÉS =====
-    def ajouter_employe(self, nom: str, tel: str = "", poste: str = "", salaire: float = 0) -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO employes (nom, tel, poste, salaire) VALUES (?, ?, ?, ?)",
-            (nom, tel, poste, salaire)
-        )
-        employe_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return employe_id
-    
-    def get_all_employes(self, actif_only: bool = True) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        if actif_only:
-            cursor.execute("SELECT * FROM employes WHERE actif = 1")
-        else:
-            cursor.execute("SELECT * FROM employes")
-        employes = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return employes
-    
-    # ===== RÉSERVATIONS =====
-    def ajouter_reservation(
-        self,
-        client_id: int,
-        service_id: int,
-        date: str,
-        heure: str,
-        montant: float,
-        poste_id: int = None,
-        employe_id: int = None,
-        notes: str = "",
-        code_promo: str = "",
-        reduction: float = 0,
-        points_utilises: int = 0
-    ) -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """INSERT INTO reservations 
-            (client_id, service_id, poste_id, employe_id, date, heure, montant, notes, code_promo, reduction, points_utilises, statut)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'en_attente')""",
-            (client_id, service_id, poste_id, employe_id, date, heure, montant, notes, code_promo, reduction, points_utilises)
-        )
-        reservation_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return reservation_id
-    
-    def get_reservations_by_date(self, date: str) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
-                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
-                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
-                   r.points_utilises, r.created_at,
-                   c.nom as client_nom, c.tel as client_tel, c.vehicule,
-                   s.nom as service_nom, s.duree, s.points as service_points,
-                   e.nom as employe_nom, p.nom as poste_nom
-            FROM reservations r
-            LEFT JOIN clients c ON r.client_id = c.id
-            LEFT JOIN services s ON r.service_id = s.id
-            LEFT JOIN employes e ON r.employe_id = e.id
-            LEFT JOIN postes p ON r.poste_id = p.id
-            WHERE r.date = ?
-            ORDER BY r.heure
-        """, (date,))
-        reservations = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return reservations
-    
-    def get_all_reservations(self) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
-                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
-                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
-                   r.points_utilises, r.created_at,
-                   c.nom as client_nom, c.tel as client_tel, c.vehicule,
-                   s.nom as service_nom, s.prix, s.duree, s.points as service_points
-            FROM reservations r
-            LEFT JOIN clients c ON r.client_id = c.id
-            LEFT JOIN services s ON r.service_id = s.id
-            ORDER BY r.date DESC, r.heure DESC
-        """)
-        reservations = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return reservations
-    
-    def update_reservation_statut(self, reservation_id: int, statut: str):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE reservations SET statut = ? WHERE id = ?",
-            (statut, reservation_id)
-        )
-        conn.commit()
-        conn.close()
-    
-    def delete_reservation(self, reservation_id: int):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM reservations WHERE id = ?", (reservation_id,))
-        conn.commit()
-        conn.close()
-    
-    # ===== PAIEMENTS =====
-    def ajouter_paiement(self, reservation_id: int, montant: float, methode: str, notes: str = "") -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO paiements (reservation_id, montant, methode, notes) VALUES (?, ?, ?, ?)",
-            (reservation_id, montant, methode, notes)
-        )
-        paiement_id = cursor.lastrowid
         
-        # Mettre à jour le montant payé de la réservation
-        cursor.execute(
-            "UPDATE reservations SET montant_paye = montant_paye + ?, methode_paiement = ? WHERE id = ?",
-            (montant, methode, reservation_id)
-        )
-        
-        conn.commit()
-        conn.close()
-        return paiement_id
-    
-    def get_all_paiements(self) -> List[Dict]:
-        """Récupère tous les paiements avec infos clients et services"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT p.id, p.reservation_id, p.montant, p.methode as methode_paiement, 
-                   p.date_paiement, p.notes,
-                   c.nom as client_nom, s.nom as service_nom
-            FROM paiements p
-            LEFT JOIN reservations r ON p.reservation_id = r.id
-            LEFT JOIN clients c ON r.client_id = c.id
-            LEFT JOIN services s ON r.service_id = s.id
-            ORDER BY p.date_paiement DESC
-        """)
-        paiements = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return paiements
-    
-    # ===== CODES PROMO =====
-    def ajouter_code_promo(
-        self,
-        code: str,
-        type: str,
-        valeur: float,
-        date_debut: str = None,
-        date_fin: str = None,
-        utilisations_max: int = -1
-    ) -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """INSERT INTO codes_promo (code, type, valeur, date_debut, date_fin, utilisations_max)
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            (code, type, valeur, date_debut, date_fin, utilisations_max)
-        )
-        promo_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return promo_id
-    
-    def verifier_code_promo(self, code: str) -> Optional[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """SELECT * FROM codes_promo 
-            WHERE code = ? AND actif = 1 
-            AND (utilisations_max = -1 OR utilisations_actuelles < utilisations_max)
-            AND (date_debut IS NULL OR date_debut <= date('now'))
-            AND (date_fin IS NULL OR date_fin >= date('now'))""",
-            (code,)
-        )
-        promo = cursor.fetchone()
-        conn.close()
-        return dict(promo) if promo else None
-    
-    def utiliser_code_promo(self, code: str):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE codes_promo SET utilisations_actuelles = utilisations_actuelles + 1 WHERE code = ?",
-            (code,)
-        )
-        conn.commit()
-        conn.close()
-    
-    # ===== STATISTIQUES =====
-    def get_stats_dashboard(self) -> Dict:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        # RDV aujourd'hui
-        cursor.execute("SELECT COUNT(*) as count FROM reservations WHERE date = ?", (today,))
-        rdv_today = cursor.fetchone()['count']
-        
-        # Revenus aujourd'hui - Utilise la table paiements
-        cursor.execute(
-            "SELECT SUM(montant) as total FROM paiements WHERE DATE(date_paiement) = ?",
-            (today,)
-        )
-        revenus_today = cursor.fetchone()['total'] or 0
-        
-        # Revenus total - Utilise la table paiements
-        cursor.execute("SELECT SUM(montant) as total FROM paiements")
-        revenus_total = cursor.fetchone()['total'] or 0
-        
-        # Total clients
-        cursor.execute("SELECT COUNT(*) as count FROM clients")
-        total_clients = cursor.fetchone()['count']
-        
-        # RDV en attente
-        cursor.execute("SELECT COUNT(*) as count FROM reservations WHERE statut = 'en_attente'")
-        rdv_attente = cursor.fetchone()['count']
-        
-        # Service le plus populaire
-        cursor.execute("""
-            SELECT s.nom, COUNT(*) as count
-            FROM reservations r
-            JOIN services s ON r.service_id = s.id
-            WHERE r.statut != 'annule'
-            GROUP BY r.service_id
-            ORDER BY count DESC
-            LIMIT 1
-        """)
-        service_pop = cursor.fetchone()
-        service_populaire = service_pop['nom'] if service_pop else "N/A"
-        
-        conn.close()
-        
-        return {
-            'rdv_today': rdv_today,
-            'revenus_today': revenus_today,
-            'revenus_total': revenus_total,
-            'total_clients': total_clients,
-            'rdv_attente': rdv_attente,
-            'service_populaire': service_populaire
-        }
-    
-    def get_revenus_par_jour(self, limit: int = 30) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT DATE(date_paiement) as date, SUM(montant) as revenus, COUNT(*) as nb_rdv
-            FROM paiements
-            GROUP BY DATE(date_paiement)
-            ORDER BY DATE(date_paiement) DESC
-            LIMIT ?
-        """, (limit,))
-        data = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return data
-    
-    def get_services_stats(self) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT s.nom, COUNT(*) as nb_reservations, SUM(p.montant) as revenus
-            FROM paiements p
-            JOIN reservations r ON p.reservation_id = r.id
-            JOIN services s ON r.service_id = s.id
-            GROUP BY r.service_id
-            ORDER BY nb_reservations DESC
-        """)
-        data = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return data
-    
-    # ===== FIDÉLITÉ =====
-    def get_recompenses_disponibles(self, points_client: int) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM recompenses WHERE actif = 1 AND points_requis <= ? ORDER BY points_requis DESC",
-            (points_client,)
-        )
-        recompenses = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return recompenses
-    
-    def ajouter_historique_fidelite(
-        self,
-        client_id: int,
-        points: int,
-        type: str,
-        description: str,
-        reservation_id: int = None
-    ):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """INSERT INTO historique_fidelite (client_id, reservation_id, points, type, description)
-            VALUES (?, ?, ?, ?, ?)""",
-            (client_id, reservation_id, points, type, description)
-        )
-        conn.commit()
-        conn.close()
-    
-    # ===== PRODUITS/STOCK =====
-    def ajouter_produit(self, nom: str, quantite: int, seuil_alerte: int, unite: str, prix_unitaire: float) -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO produits (nom, quantite, seuil_alerte, unite, prix_unitaire) VALUES (?, ?, ?, ?, ?)",
-            (nom, quantite, seuil_alerte, unite, prix_unitaire)
-        )
-        produit_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return produit_id
-    
-    def get_all_produits(self) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM produits ORDER BY nom")
-        produits = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return produits
-    
-    def get_produits_alerte(self) -> List[Dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM produits WHERE quantite <= seuil_alerte")
-        produits = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return produits
-    
-    def update_stock(self, produit_id: int, quantite: int, type: str, prix: float = 0, notes: str = ""):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        # Enregistrer le mouvement
-        cursor.execute(
-            "INSERT INTO mouvements_stock (produit_id, quantite, type, prix, notes) VALUES (?, ?, ?, ?, ?)",
-            (produit_id, quantite, type, prix, notes)
-        )
-        
-        # Mettre à jour la quantité
-        if type == "entree":
+        # Créneaux horaires
+        jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+        for jour in jours:
             cursor.execute(
-                "UPDATE produits SET quantite = quantite + ? WHERE id = ?",
-                (quantite, produit_id)
-            )
-        else:
-            cursor.execute(
-                "UPDATE produits SET quantite = quantite - ? WHERE id = ?",
-                (quantite, produit_id)
-            )
-        
-        conn.commit()
-        conn.close()
-    
-    # ===== BACKUP =====
-    def export_all_data(self) -> Dict:
-        """Exporte toutes les données en JSON"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        data = {
-            'export_date': datetime.now().isoformat(),
-            'clients': [],
-            'services': [],
-            'reservations': [],
-            'employes': [],
-            'postes': [],
-            'produits': [],
-            'codes_promo': []
-        }
-        
-        for table in data.keys():
-            if table != 'export_date':
-                cursor.execute(f"SELECT * FROM {table}")
-                data[table] = [dict(row) for row in cursor.fetchall()]
-        
-        conn.close()
-        return data
-    
-    # ===== GESTION COMPTES EMPLOYÉS =====
-    def creer_compte_employe(self, username: str, password: str, email: str = "") -> int:
-        """Crée un compte utilisateur pour un employé"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        try:
-            cursor.execute(
-                "INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
-                (username, password_hash, email, "employe")
-            )
-            user_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
-            return user_id
-        except sqlite3.IntegrityError:
-            conn.close()
-            return -1  # Username déjà existant
-    
-    def lier_employe_user(self, employe_id: int, user_id: int):
-        """Lie un employé à son compte utilisateur"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE employes SET user_id = ? WHERE id = ?",
-            (user_id, employe_id)
-        )
-        conn.commit()
-        conn.close()
-    
-    def supprimer_employe(self, employe_id: int):
-        """Désactive un employé (soft delete)"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE employes SET actif = 0 WHERE id = ?", (employe_id,))
-        conn.commit()
-        conn.close()
-    
-    def modifier_employe(self, employe_id: int, nom: str = None, tel: str = None, poste: str = None, salaire: float = None):
-        """Modifie les informations d'un employé"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        updates = []
-        params = []
-        
-        if nom:
-            updates.append("nom = ?")
-            params.append(nom)
-        if tel:
-            updates.append("tel = ?")
-            params.append(tel)
-        if poste:
-            updates.append("poste = ?")
-            params.append(poste)
-        if salaire is not None:
-            updates.append("salaire = ?")
-            params.append(salaire)
-        
-        if updates:
-            params.append(employe_id)
-            query = f"UPDATE employes SET {', '.join(updates)} WHERE id = ?"
-            cursor.execute(query, params)
-            conn.commit()
-        
-        conn.close()
-    
-    # ===== POINTAGES =====
-    def enregistrer_pointage(self, user_id: int, type_pointage: str, notes: str = "") -> int:
-        """Enregistre un pointage (arrivée/départ)"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        now = datetime.now()
-        date_str = now.strftime("%Y-%m-%d")
-        heure_str = now.strftime("%H:%M")
-        
-        cursor.execute(
-            "INSERT INTO pointages (user_id, type, date, heure, notes) VALUES (?, ?, ?, ?, ?)",
-            (user_id, type_pointage, date_str, heure_str, notes)
-        )
-        pointage_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return pointage_id
-    
-    def get_pointages_jour(self, date_str: str) -> List[Dict]:
-        """Récupère tous les pointages d'une date"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT p.*, u.username, u.role
-            FROM pointages p
-            LEFT JOIN users u ON p.user_id = u.id
-            WHERE p.date = ?
-            ORDER BY p.heure
-        """, (date_str,))
-        pointages = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return pointages
-    
-    def get_pointages_employe(self, user_id: int, date_debut: str = None, date_fin: str = None) -> List[Dict]:
-        """Récupère les pointages d'un employé sur une période"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        if date_debut and date_fin:
-            cursor.execute("""
-                SELECT * FROM pointages
-                WHERE user_id = ? AND date BETWEEN ? AND ?
-                ORDER BY date DESC, heure DESC
-            """, (user_id, date_debut, date_fin))
-        else:
-            cursor.execute("""
-                SELECT * FROM pointages
-                WHERE user_id = ?
-                ORDER BY date DESC, heure DESC
-                LIMIT 30
-            """, (user_id,))
-        
-        pointages = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return pointages
-    
-    def calculer_heures_travail(self, user_id: int, date_str: str) -> Dict:
-        """Calcule les heures de travail d'un employé pour une date"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT type, heure FROM pointages
-            WHERE user_id = ? AND date = ?
-            ORDER BY heure
-        """, (user_id, date_str))
-        
-        pointages = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        if not pointages:
-            return {"heures_travail": 0, "arrivee": None, "depart": None}
-        
-        arrivee = next((p["heure"] for p in pointages if p["type"] == "arrivee"), None)
-        depart = next((p["heure"] for p in pointages if p["type"] == "depart"), None)
-        
-        heures_travail = 0
-        if arrivee and depart:
-            h_arr = datetime.strptime(arrivee, "%H:%M")
-            h_dep = datetime.strptime(depart, "%H:%M")
-            delta = h_dep - h_arr
-            heures_travail = delta.total_seconds() / 3600
-        
-        return {
-            "heures_travail": round(heures_travail, 2),
-            "arrivee": arrivee,
-            "depart": depart
-        }
-    
-    # ===== GESTION PHOTOS AVANT/APRÈS =====
-    def ajouter_photo_service(self, reservation_id: int, type_photo: str, photo_data: bytes, employe_id: int = None, notes: str = "") -> int:
-        """Ajoute une photo (avant ou après) pour un service"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            "INSERT INTO photos_services (reservation_id, type_photo, photo_data, employe_id, notes) VALUES (?, ?, ?, ?, ?)",
-            (reservation_id, type_photo, photo_data, employe_id, notes)
-        )
-        photo_id = cursor.lastrowid
-        
-        conn.commit()
-        conn.close()
-        return photo_id
-    
-    def get_photos_service(self, reservation_id: int, type_photo: str = None) -> List[Dict]:
-        """Récupère les photos d'un service (toutes ou filtrées par type)"""
-        # Validation de l'ID
-        if not reservation_id or reservation_id is None:
-            return []
-        
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        if type_photo:
-            cursor.execute(
-                "SELECT * FROM photos_services WHERE reservation_id = ? AND type_photo = ? ORDER BY date_ajout",
-                (reservation_id, type_photo)
-            )
-        else:
-            cursor.execute(
-                "SELECT * FROM photos_services WHERE reservation_id = ? ORDER BY type_photo, date_ajout",
-                (reservation_id,)
+                """INSERT INTO creneaux_disponibles 
+                   (jour_semaine, heure_debut, heure_fin, intervalle_minutes, capacite_simultanee, actif)
+                   VALUES (%s, %s, %s, %s, %s, %s)
+                   ON CONFLICT DO NOTHING""",
+                (jour, '08:00' if jour != 'dimanche' else '00:00',
+                 '18:00' if jour != 'dimanche' else '00:00',
+                 30, 2, jour != 'dimanche')
             )
         
-        photos = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return photos
-    
-    def supprimer_photo_service(self, photo_id: int):
-        """Supprime une photo spécifique"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM photos_services WHERE id = ?", (photo_id,))
         conn.commit()
-        conn.close()
-    
-    def get_toutes_photos_services(self, limit: int = 100) -> List[Dict]:
-        """Récupère toutes les photos des services (pour galerie) groupées par réservation"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT DISTINCT ps.reservation_id, r.date, s.nom as service_nom, c.nom as client_nom, c.vehicule
-            FROM photos_services ps
-            JOIN reservations r ON ps.reservation_id = r.id
-            JOIN services s ON r.service_id = s.id
-            JOIN clients c ON r.client_id = c.id
-            ORDER BY r.date DESC
-            LIMIT ?
-        """, (limit,))
-        reservations = [dict(row) for row in cursor.fetchall()]
-        
-        # Pour chaque réservation, récupérer toutes les photos
-        for res in reservations:
-            cursor.execute("""
-                SELECT id, type_photo, photo_data, date_ajout
-                FROM photos_services
-                WHERE reservation_id = ?
-                ORDER BY type_photo, date_ajout
-            """, (res['reservation_id'],))
-            res['photos'] = [dict(row) for row in cursor.fetchall()]
-        
-        conn.close()
-        return reservations
-    
-    # ===== GESTION PARAMÈTRES ENTREPRISE =====
-    
-    def get_parametre(self, cle: str, default: str = None) -> Optional[str]:
-        """Récupère un paramètre depuis la base"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT valeur FROM parametres WHERE cle = ?", (cle,))
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
-            return result['valeur']
-        return default
-    
-    def set_parametre(self, cle: str, valeur: str):
-        """Enregistre ou met à jour un paramètre"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT OR REPLACE INTO parametres (cle, valeur)
-            VALUES (?, ?)
-        """, (cle, valeur))
-        
-        conn.commit()
-        conn.close()
-    
-    def get_info_entreprise(self) -> Dict:
-        """Récupère toutes les informations de l'entreprise"""
-        return {
-            'nom': self.get_parametre('nom_entreprise', 'WashAfrique Pro'),
-            'description': self.get_parametre('description_entreprise', ''),
-            'telephone': self.get_parametre('tel_entreprise', ''),
-            'email': self.get_parametre('email_entreprise', ''),
-            'adresse': self.get_parametre('adresse_entreprise', ''),
-            'site_web': self.get_parametre('site_web_entreprise', '')
-        }
-    
-    def set_info_entreprise(self, nom: str, description: str, telephone: str, 
-                           email: str, adresse: str, site_web: str):
-        """Enregistre les informations de l'entreprise"""
-        self.set_parametre('nom_entreprise', nom)
-        self.set_parametre('description_entreprise', description)
-        self.set_parametre('tel_entreprise', telephone)
-        self.set_parametre('email_entreprise', email)
-        self.set_parametre('adresse_entreprise', adresse)
-        self.set_parametre('site_web_entreprise', site_web)
-    
-    # ===== SUPPRESSION HISTORIQUE =====
-    
-    def supprimer_historique_services(self, date_avant: str = None):
-        """Supprime l'historique des services (optionnel: avant une date)"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        if date_avant:
-            # Supprimer services avant une date spécifique
-            cursor.execute("DELETE FROM reservations WHERE date_reservation < ?", (date_avant,))
-            cursor.execute("DELETE FROM paiements WHERE DATE(date_paiement) < ?", (date_avant,))
-        else:
-            # Supprimer TOUT l'historique
-            cursor.execute("DELETE FROM reservations")
-            cursor.execute("DELETE FROM paiements")
-            cursor.execute("DELETE FROM photos_services")
-            cursor.execute("DELETE FROM historique_fidelite")
-        
-        lignes_supprimees = cursor.rowcount
-        conn.commit()
-        conn.close()
-        return lignes_supprimees
-    
-    def reinitialiser_ca(self):
-        """Réinitialise le chiffre d'affaires (supprime tous les paiements)"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("DELETE FROM paiements")
-        nb_paiements = cursor.rowcount
-        
-        # Réinitialiser montant_paye des réservations
-        cursor.execute("UPDATE reservations SET montant_paye = 0, statut = 'en_attente'")
-        
-        conn.commit()
-        conn.close()
-        return nb_paiements
-    
-    def reinitialiser_clients(self):
-        """Réinitialise points fidélité et total dépenses des clients"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("UPDATE clients SET points_fidelite = 0, total_depense = 0")
-        cursor.execute("DELETE FROM historique_fidelite")
-        
-        conn.commit()
-        conn.close()
-    
-    def archiver_et_reinitialiser(self, nom_archive: str = None):
-        """Archive les données actuelles puis réinitialise tout"""
-        import shutil
-        from datetime import datetime
-        
-        # Créer nom archive avec timestamp
-        if not nom_archive:
-            nom_archive = f"washafrique_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-        
-        # Copier la base actuelle vers archive
-        shutil.copy2(self.db_name, nom_archive)
-        
-        # Réinitialiser
-        self.reinitialiser_ca()
-        self.supprimer_historique_services()
-        self.reinitialiser_clients()
-        
-        return nom_archive
-    
-    # ===== SITE CLIENT - PARAMÈTRES =====
-    def get_parametre_site_client(self, cle: str, defaut: str = "") -> str:
-        """Récupère un paramètre du site client"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT valeur FROM parametres_site_client WHERE cle = ?", (cle,))
-        result = cursor.fetchone()
-        conn.close()
-        return result['valeur'] if result else defaut
-    
-    def set_parametre_site_client(self, cle: str, valeur: str):
-        """Met à jour un paramètre du site client"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE parametres_site_client SET valeur = ?, updated_at = CURRENT_TIMESTAMP WHERE cle = ?",
-            (valeur, cle)
-        )
-        conn.commit()
-        conn.close()
-    
-    def get_all_parametres_site_client(self) -> List[Dict]:
-        """Récupère tous les paramètres site client"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM parametres_site_client ORDER BY cle")
-        parametres = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return parametres
-    
-    # ===== SITE CLIENT - CRÉNEAUX HORAIRES =====
-    def get_creneaux_disponibles(self, jour_semaine: str = None) -> List[Dict]:
-        """Récupère les créneaux horaires disponibles"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        if jour_semaine:
-            cursor.execute(
-                "SELECT * FROM creneaux_disponibles WHERE jour_semaine = ? AND actif = 1",
-                (jour_semaine,)
-            )
-        else:
-            cursor.execute("SELECT * FROM creneaux_disponibles")
-        creneaux = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return creneaux
-    
-    def update_creneau(self, jour_semaine: str, heure_debut: str, heure_fin: str, 
-                       intervalle: int, capacite: int, actif: int):
-        """Met à jour un créneau horaire"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE creneaux_disponibles 
-            SET heure_debut = ?, heure_fin = ?, intervalle_minutes = ?, 
-                capacite_simultanee = ?, actif = ?
-            WHERE jour_semaine = ?
-        """, (heure_debut, heure_fin, intervalle, capacite, actif, jour_semaine))
-        conn.commit()
-        conn.close()
-    
-    # ===== SITE CLIENT - RÉSERVATIONS WEB =====
-    def creer_reservation_web(self, nom: str, tel: str, email: str, service_id: int,
-                              date: str, heure: str, notes: str = "") -> str:
-        """Crée une réservation depuis le site client"""
-        import random
-        import string
-        
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        # Générer code unique
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        
-        cursor.execute("""
-            INSERT INTO reservations_web 
-            (code_reservation, nom_client, tel_client, email_client, service_id, 
-             date_reservation, heure_reservation, notes_client)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (code, nom, tel, email, service_id, date, heure, notes))
-        
-        conn.commit()
-        conn.close()
-        return code
-    
-    def get_reservation_web_by_code(self, code: str) -> Optional[Dict]:
-        """Récupère une réservation par son code"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT r.*, s.nom as service_nom, s.prix, s.duree
-            FROM reservations_web r
-            JOIN services s ON r.service_id = s.id
-            WHERE r.code_reservation = ?
-        """, (code,))
-        result = cursor.fetchone()
-        conn.close()
-        return dict(result) if result else None
-    
-    def get_reservations_web_en_attente(self) -> List[Dict]:
-        """Récupère toutes les réservations web en attente"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT r.*, s.nom as service_nom, s.prix
-            FROM reservations_web r
-            JOIN services s ON r.service_id = s.id
-            WHERE r.statut = 'en_attente'
-            ORDER BY r.date_reservation, r.heure_reservation
-        """)
-        reservations = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return reservations
-    
-    def valider_reservation_web(self, code: str):
-        """Valide une réservation web"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE reservations_web 
-            SET statut = 'confirmee', confirmed_at = CURRENT_TIMESTAMP
-            WHERE code_reservation = ?
-        """, (code,))
-        conn.commit()
-        conn.close()
-    
-    def annuler_reservation_web(self, code: str):
-        """Annule une réservation web"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE reservations_web 
-            SET statut = 'annulee'
-            WHERE code_reservation = ?
-        """, (code,))
-        conn.commit()
-        conn.close()
-    
-    # ===== SITE CLIENT - AVIS =====
-    def ajouter_avis_client(self, nom: str, note: int, commentaire: str = "", 
-                            reservation_web_id: int = None) -> int:
-        """Ajoute un avis client"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO avis_clients (reservation_web_id, nom_client, note, commentaire)
-            VALUES (?, ?, ?, ?)
-        """, (reservation_web_id, nom, note, commentaire))
-        avis_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return avis_id
-    
-    def get_avis_visibles(self, limit: int = 10) -> List[Dict]:
-        """Récupère les avis visibles"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM avis_clients 
-            WHERE visible = 1 
-            ORDER BY created_at DESC 
-            LIMIT ?
-        """, (limit,))
-        avis = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return avis
-    
-    def toggle_visibilite_avis(self, avis_id: int):
-        """Bascule la visibilité d'un avis"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE avis_clients 
-            SET visible = CASE WHEN visible = 1 THEN 0 ELSE 1 END
-            WHERE id = ?
-        """, (avis_id,))
-        conn.commit()
-        conn.close()
+
+# Pour compatibilité avec le code existant, créer un alias
+Database = DatabasePostgres
