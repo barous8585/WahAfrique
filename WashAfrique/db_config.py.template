@@ -1,0 +1,29 @@
+# Configuration Base de Données PostgreSQL (Supabase)
+# 1. Copiez ce fichier : cp db_config.py.template db_config.py
+# 2. Remplissez vos credentials Supabase ci-dessous
+# 3. NE COMMITEZ JAMAIS db_config.py sur GitHub !
+
+DB_CONFIG = {
+    "host": "db.xxxxxxxxxxxxxxxxxxxxx.supabase.co",  # ⚠️ À REMPLACER
+    "port": 5432,
+    "database": "postgres",
+    "user": "postgres",
+    "password": "VOTRE_MOT_DE_PASSE_SUPABASE_ICI"  # ⚠️ À REMPLACER
+}
+
+# Instructions :
+# 1. Créez un compte sur https://supabase.com
+# 2. Créez un nouveau projet
+# 3. Allez dans Settings → Database
+# 4. Copiez les informations de connexion ci-dessus
+#
+# Pour Streamlit Cloud :
+# Ne commitez PAS ce fichier ! Utilisez Streamlit Secrets à la place :
+# Settings → Secrets → Ajoutez :
+# 
+# [postgres]
+# host = "db.xxx.supabase.co"
+# port = 5432
+# database = "postgres"
+# user = "postgres"
+# password = "votre_mot_de_passe"

@@ -2,6 +2,9 @@
 *.db
 washafrique.db
 
+# Configuration base de données (contient credentials)
+db_config.py
+
 # Python
 __pycache__/
 *.py[cod]
