@@ -228,6 +228,11 @@ with tabs[1]:
                         </p>
                     </div>
                 """, unsafe_allow_html=True)
+                # Bouton pour réserver ce service
+                if st.button(f"📅 Réserver", key=f"reserver_{service['id']}", use_container_width=True):
+                    st.session_state.service_preselectionne = service['id']
+                    st.session_state.page_active = 2  # Onglet Réserver
+                    st.rerun()
                 st.markdown("<br>", unsafe_allow_html=True)
 
 # ===== ONGLET RÉSERVATION =====
@@ -242,11 +247,15 @@ with tabs[2]:
             
             col1, col2 = st.columns(2)
             with col1:
-                nom_client = st.text_input("👤 Nom complet *", placeholder="Ex: Jean Kouassi")
-                tel_client = st.text_input("📱 Téléphone *", placeholder="Ex: +225 XX XX XX XX")
+                nom_client = st.text_input("👤 Nom complet *", placeholder="Ex: Moussa Diallo")
+                tel_client = st.text_input(
+                    "📱 Téléphone *", 
+                    placeholder="Ex: +221 77 123 45 67 ou 771234567",
+                    help="Format sénégalais: +221 XX XXX XX XX"
+                )
             
             with col2:
-                email_client = st.text_input("📧 Email (optionnel)", placeholder="Ex: jean@email.com")
+                email_client = st.text_input("📧 Email (optionnel)", placeholder="Ex: moussa@email.com")
                 vehicule = st.text_input("🚗 Véhicule", placeholder="Ex: Toyota Corolla")
             
             st.subheader("Détails de la Réservation")
@@ -255,10 +264,19 @@ with tabs[2]:
             with col1:
                 services_actifs = [s for s in st.session_state.db.get_all_services() if s['actif']]
                 if services_actifs:
+                    # Index par défaut = service présélectionné ou 0
+                    index_default = 0
+                    if 'service_preselectionne' in st.session_state:
+                        for i, s in enumerate(services_actifs):
+                            if s['id'] == st.session_state.service_preselectionne:
+                                index_default = i
+                                break
+                    
                     service_choisi = st.selectbox(
                         "🧼 Service *",
                         options=services_actifs,
-                        format_func=lambda x: f"{x['nom']} - {format_fcfa(x['prix'])}"
+                        format_func=lambda x: f"{x['nom']} - {format_fcfa(x['prix'])}",
+                        index=index_default
                     )
                 else:
                     st.error("Aucun service disponible")
