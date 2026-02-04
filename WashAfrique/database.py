@@ -659,7 +659,7 @@ class DatabasePostgres:
             FROM reservations r
             JOIN services s ON r.service_id = s.id
             WHERE r.statut != 'annule'
-            GROUP BY r.service_id
+            GROUP BY s.id, s.nom
             ORDER BY count DESC
             LIMIT 1
         """)
@@ -699,7 +699,7 @@ class DatabasePostgres:
             FROM paiements p
             JOIN reservations r ON p.reservation_id = r.id
             JOIN services s ON r.service_id = s.id
-            GROUP BY r.service_id
+            GROUP BY s.id, s.nom
             ORDER BY nb_reservations DESC
         """)
         data = [dict(row) for row in cursor.fetchall()]
