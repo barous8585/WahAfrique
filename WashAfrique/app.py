@@ -198,14 +198,22 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# Bouton de déconnexion en haut à droite
-col1, col2, col3 = st.columns([3, 1, 1])
+# Bouton de déconnexion en haut à droite + Nom entreprise
+info_entreprise = st.session_state.db.get_info_entreprise()
+nom_entreprise = info_entreprise['nom'] if info_entreprise['nom'] else 'WashAfrique Pro'
+
+col1, col2, col3 = st.columns([2, 2, 1])
+with col1:
+    st.markdown(f"## 🚗 {nom_entreprise}")
+    st.caption(f"Connecté: {st.session_state.user['username']}")
 with col3:
     if st.button("🚪 Déconnexion", use_container_width=True):
         st.session_state.authenticated = False
         if "user" in st.session_state:
             del st.session_state.user
         st.rerun()
+
+st.markdown("---")
 
 # Navigation selon le rôle
 user_role = st.session_state.user["role"]
@@ -1656,19 +1664,31 @@ WashAfrique Pro - Gestion Station de Lavage
         with sub_tabs[0]:
             st.subheader("👤 Mes Informations")
             
+            # Récupérer le profil actuel
+            profil = st.session_state.db.get_profil_proprietaire(st.session_state.user['user_id'])
+            
             with st.form("profil_proprio"):
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    nom_proprio = st.text_input("Nom complet", value=st.session_state.user['username'])
-                    email_proprio = st.text_input("Email")
+                    nom_proprio = st.text_input("Nom complet", value=profil['nom_complet'], placeholder="Ex: Ousmane Barry")
+                    email_proprio = st.text_input("Email", value=profil['email'], placeholder="exemple@email.com")
                 
                 with col2:
-                    tel_proprio = st.text_input("Téléphone")
-                    adresse_proprio = st.text_input("Adresse")
+                    tel_proprio = st.text_input("Téléphone", value=profil['telephone'], placeholder="+221 XX XXX XX XX")
+                    adresse_proprio = st.text_input("Adresse", value=profil['adresse'], placeholder="Ex: Kermasser, Dakar")
                 
-                if st.form_submit_button("💾 Enregistrer", use_container_width=True):
-                    st.success("✅ Profil mis à jour")
+                if st.form_submit_button("💾 Enregistrer", use_container_width=True, type="primary"):
+                    st.session_state.db.set_profil_proprietaire(
+                        user_id=st.session_state.user['user_id'],
+                        nom_complet=nom_proprio,
+                        telephone=tel_proprio,
+                        email=email_proprio,
+                        adresse=adresse_proprio
+                    )
+                    st.success("✅ Profil mis à jour avec succès")
+                    st.balloons()
+                    st.rerun()
         
         with sub_tabs[1]:
             st.subheader("🏢 Informations Entreprise")
@@ -1721,18 +1741,76 @@ WashAfrique Pro - Gestion Station de Lavage
                     st.success("✅ Horaires mis à jour")
         
         with sub_tabs[3]:
-            st.subheader("🔐 Sécurité")
+            st.subheader("🔐 Sécurité et Identifiants")
+            
+            st.info("📝 **Informations actuelles**\n"
+                   f"- **Nom d'utilisateur:** `{st.session_state.user['username']}`\n"
+                   f"- **Rôle:** Propriétaire / Administrateur")
+            
+            st.markdown("---")
+            
+            # Changer nom d'utilisateur
+            st.markdown("### 👤 Changer le Nom d'Utilisateur")
+            
+            with st.form("change_username"):
+                nouveau_username = st.text_input(
+                    "Nouveau nom d'utilisateur",
+                    placeholder="Ex: admin2024",
+                    help="Le nom d'utilisateur sera utilisé pour la connexion"
+                )
+                password_confirm_username = st.text_input(
+                    "Confirmer votre mot de passe actuel",
+                    type="password",
+                    help="Pour sécurité, confirmez votre mot de passe"
+                )
+                
+                if st.form_submit_button("✏️ Changer le Nom d'Utilisateur", use_container_width=True):
+                    if not nouveau_username or not password_confirm_username:
+                        st.error("⚠️ Veuillez remplir tous les champs")
+                    elif len(nouveau_username) < 3:
+                        st.error("⚠️ Le nom d'utilisateur doit contenir au moins 3 caractères")
+                    elif not st.session_state.db.verify_password(st.session_state.user['user_id'], password_confirm_username):
+                        st.error("❌ Mot de passe incorrect")
+                    else:
+                        success = st.session_state.db.changer_username(
+                            st.session_state.user['user_id'], 
+                            nouveau_username
+                        )
+                        if success:
+                            st.session_state.user['username'] = nouveau_username
+                            st.success(f"✅ Nom d'utilisateur changé avec succès → **{nouveau_username}**")
+                            st.info("🔄 Pensez à utiliser ce nouveau nom lors de votre prochaine connexion")
+                            st.balloons()
+                        else:
+                            st.error("❌ Ce nom d'utilisateur existe déjà. Choisissez-en un autre.")
+            
+            st.markdown("---")
+            
+            # Changer mot de passe
+            st.markdown("### 🔒 Changer le Mot de Passe")
             
             with st.form("change_password"):
-                ancien_mdp = st.text_input("Ancien mot de passe", type="password")
-                nouveau_mdp = st.text_input("Nouveau mot de passe", type="password")
-                confirmer_mdp = st.text_input("Confirmer nouveau mot de passe", type="password")
+                ancien_mdp = st.text_input("Mot de passe actuel", type="password")
+                nouveau_mdp = st.text_input("Nouveau mot de passe", type="password", help="Minimum 6 caractères")
+                confirmer_mdp = st.text_input("Confirmer le nouveau mot de passe", type="password")
                 
-                if st.form_submit_button("🔒 Changer le Mot de Passe", use_container_width=True):
-                    if nouveau_mdp == confirmer_mdp:
-                        st.success("✅ Mot de passe changé avec succès")
-                    else:
+                if st.form_submit_button("🔒 Changer le Mot de Passe", use_container_width=True, type="primary"):
+                    if not ancien_mdp or not nouveau_mdp or not confirmer_mdp:
+                        st.error("⚠️ Veuillez remplir tous les champs")
+                    elif len(nouveau_mdp) < 6:
+                        st.error("⚠️ Le nouveau mot de passe doit contenir au moins 6 caractères")
+                    elif nouveau_mdp != confirmer_mdp:
                         st.error("❌ Les mots de passe ne correspondent pas")
+                    elif not st.session_state.db.verify_password(st.session_state.user['user_id'], ancien_mdp):
+                        st.error("❌ Le mot de passe actuel est incorrect")
+                    else:
+                        st.session_state.db.changer_mot_de_passe(
+                            st.session_state.user['user_id'],
+                            nouveau_mdp
+                        )
+                        st.success("✅ Mot de passe changé avec succès")
+                        st.info("🔐 Votre compte est maintenant sécurisé avec le nouveau mot de passe")
+                        st.balloons()
         
         with sub_tabs[4]:
             st.subheader("🗑️ Gestion des Données")

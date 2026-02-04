@@ -138,6 +138,21 @@ class Database:
             )
         ''')
         
+        # Table profil propriétaire
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS profil_proprietaire (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER UNIQUE NOT NULL,
+                nom_complet TEXT,
+                telephone TEXT,
+                email TEXT,
+                adresse TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
         # Table récompenses fidélité
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS recompenses (
@@ -1158,6 +1173,112 @@ class Database:
         self.set_parametre('email_entreprise', email)
         self.set_parametre('adresse_entreprise', adresse)
         self.set_parametre('site_web_entreprise', site_web)
+    
+    # ===== PROFIL PROPRIÉTAIRE =====
+    
+    def get_profil_proprietaire(self, user_id: int) -> Dict:
+        """Récupère le profil du propriétaire"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT nom_complet, telephone, email, adresse
+            FROM profil_proprietaire
+            WHERE user_id = ?
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'nom_complet': result[0] or '',
+                'telephone': result[1] or '',
+                'email': result[2] or '',
+                'adresse': result[3] or ''
+            }
+        else:
+            return {
+                'nom_complet': '',
+                'telephone': '',
+                'email': '',
+                'adresse': ''
+            }
+    
+    def set_profil_proprietaire(self, user_id: int, nom_complet: str, 
+                                telephone: str, email: str, adresse: str):
+        """Enregistre ou met à jour le profil du propriétaire"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO profil_proprietaire (user_id, nom_complet, telephone, email, adresse, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(user_id) 
+            DO UPDATE SET 
+                nom_complet = excluded.nom_complet,
+                telephone = excluded.telephone,
+                email = excluded.email,
+                adresse = excluded.adresse,
+                updated_at = datetime('now')
+        """, (user_id, nom_complet, telephone, email, adresse))
+        
+        conn.commit()
+        conn.close()
+    
+    # ===== GESTION IDENTIFIANTS =====
+    
+    def verify_password(self, user_id: int, password: str) -> bool:
+        """Vérifie si le mot de passe correspond"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        
+        cursor.execute("""
+            SELECT id FROM users
+            WHERE id = ? AND password_hash = ?
+        """, (user_id, password_hash))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result is not None
+    
+    def changer_username(self, user_id: int, nouveau_username: str) -> bool:
+        """Change le nom d'utilisateur"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                UPDATE users
+                SET username = ?
+                WHERE id = ?
+            """, (nouveau_username, user_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.IntegrityError:
+            conn.close()
+            return False
+    
+    def changer_mot_de_passe(self, user_id: int, nouveau_password: str):
+        """Change le mot de passe"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        password_hash = hashlib.sha256(nouveau_password.encode()).hexdigest()
+        
+        cursor.execute("""
+            UPDATE users
+            SET password_hash = ?
+            WHERE id = ?
+        """, (password_hash, user_id))
+        
+        conn.commit()
+        conn.close()
     
     # ===== SUPPRESSION HISTORIQUE =====
     
