@@ -278,6 +278,12 @@ with tabs[2]:
                     heure_fin = creneaux[0]['heure_fin']
                     intervalle = creneaux[0]['intervalle_minutes']
                     
+                    # Convertir en string si nécessaire (PostgreSQL retourne des objets time)
+                    if not isinstance(heure_debut, str):
+                        heure_debut = str(heure_debut)[:5]  # Format HH:MM
+                    if not isinstance(heure_fin, str):
+                        heure_fin = str(heure_fin)[:5]
+                    
                     heures_dispo = []
                     h_debut = datetime.strptime(heure_debut, "%H:%M")
                     h_fin = datetime.strptime(heure_fin, "%H:%M")
