@@ -178,11 +178,37 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# ===== NAVIGATION =====
-tabs = st.tabs(["🏠 Accueil", "🧼 Services", "📅 Réserver", "🔍 Suivi Réservation", "⭐ Avis"])
+# ===== NAVIGATION AVEC BOUTONS =====
+# Initialiser page active
+if 'page_active' not in st.session_state:
+    st.session_state.page_active = 0
+
+col1, col2, col3, col4, col5 = st.columns(5)
+with col1:
+    if st.button("🏠 Accueil", use_container_width=True, type="primary" if st.session_state.page_active == 0 else "secondary"):
+        st.session_state.page_active = 0
+        st.rerun()
+with col2:
+    if st.button("🧼 Services", use_container_width=True, type="primary" if st.session_state.page_active == 1 else "secondary"):
+        st.session_state.page_active = 1
+        st.rerun()
+with col3:
+    if st.button("📅 Réserver", use_container_width=True, type="primary" if st.session_state.page_active == 2 else "secondary"):
+        st.session_state.page_active = 2
+        st.rerun()
+with col4:
+    if st.button("🔍 Suivi", use_container_width=True, type="primary" if st.session_state.page_active == 3 else "secondary"):
+        st.session_state.page_active = 3
+        st.rerun()
+with col5:
+    if st.button("⭐ Avis", use_container_width=True, type="primary" if st.session_state.page_active == 4 else "secondary"):
+        st.session_state.page_active = 4
+        st.rerun()
+
+st.markdown("---")
 
 # ===== ONGLET ACCUEIL =====
-with tabs[0]:
+if st.session_state.page_active == 0:
     st.markdown(f"### {texte_accueil}")
     
     col1, col2, col3 = st.columns(3)
@@ -215,7 +241,7 @@ with tabs[0]:
         st.metric("Clients Satisfaits", "500+")
 
 # ===== ONGLET SERVICES =====
-with tabs[1]:
+if st.session_state.page_active == 1:
     st.header("🧼 Nos Services")
     
     services = st.session_state.db.get_all_services()
@@ -245,7 +271,7 @@ with tabs[1]:
                 st.markdown("<br>", unsafe_allow_html=True)
 
 # ===== ONGLET RÉSERVATION =====
-with tabs[2]:
+if st.session_state.page_active == 2:
     st.header("📅 Réserver un Service")
     
     if not reservation_active:
@@ -364,7 +390,7 @@ with tabs[2]:
                         st.error(f"❌ Erreur lors de la réservation : {str(e)}")
 
 # ===== ONGLET SUIVI =====
-with tabs[3]:
+if st.session_state.page_active == 3:
     st.header("🔍 Suivre ma Réservation")
     
     code_recherche = st.text_input("Entrez votre code de réservation", placeholder="Ex: ABC12345")
@@ -415,7 +441,7 @@ with tabs[3]:
             st.warning("⚠️ Veuillez entrer un code de réservation")
 
 # ===== ONGLET AVIS =====
-with tabs[4]:
+if st.session_state.page_active == 4:
     st.header("⭐ Avis Clients")
     
     avis_liste = st.session_state.db.get_avis_visibles(limit=20)
