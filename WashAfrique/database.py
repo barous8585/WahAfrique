@@ -101,6 +101,20 @@ class DatabasePostgres:
             )
         ''')
         
+        # Table employes
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS employes (
+                id SERIAL PRIMARY KEY,
+                nom VARCHAR(200) NOT NULL,
+                tel VARCHAR(20) NOT NULL,
+                poste VARCHAR(100),
+                salaire DECIMAL(10, 2),
+                actif BOOLEAN DEFAULT TRUE,
+                user_id INTEGER REFERENCES users(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Table services
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS services (
