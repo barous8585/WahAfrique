@@ -4,6 +4,15 @@ from datetime import datetime, date, timedelta
 from database import Database
 import locale
 
+# Fonction utilitaire pour convertir objets time PostgreSQL
+def safe_time_to_str(time_obj):
+    """Convertit un objet time/datetime en string HH:MM"""
+    if isinstance(time_obj, str):
+        return time_obj[:5] if len(time_obj) >= 5 else time_obj
+    if hasattr(time_obj, 'strftime'):
+        return time_obj.strftime("%H:%M")
+    return str(time_obj)[:5]
+
 # Configuration de la page
 st.set_page_config(
     page_title="🚗 WashAfrique - Réservation en ligne",
@@ -274,15 +283,9 @@ with tabs[2]:
                 
                 if creneaux and creneaux[0]['actif']:
                     # Générer heures disponibles
-                    heure_debut = creneaux[0]['heure_debut']
-                    heure_fin = creneaux[0]['heure_fin']
+                    heure_debut = safe_time_to_str(creneaux[0]['heure_debut'])
+                    heure_fin = safe_time_to_str(creneaux[0]['heure_fin'])
                     intervalle = creneaux[0]['intervalle_minutes']
-                    
-                    # Convertir en string si nécessaire (PostgreSQL retourne des objets time)
-                    if not isinstance(heure_debut, str):
-                        heure_debut = str(heure_debut)[:5]  # Format HH:MM
-                    if not isinstance(heure_fin, str):
-                        heure_fin = str(heure_fin)[:5]
                     
                     heures_dispo = []
                     h_debut = datetime.strptime(heure_debut, "%H:%M")

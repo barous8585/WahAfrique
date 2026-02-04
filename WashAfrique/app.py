@@ -8,6 +8,15 @@ from database import Database
 import hashlib
 import io
 
+# Fonction utilitaire pour convertir objets time PostgreSQL
+def safe_time_to_str(time_obj):
+    """Convertit un objet time/datetime en string HH:MM"""
+    if isinstance(time_obj, str):
+        return time_obj[:5] if len(time_obj) >= 5 else time_obj
+    if hasattr(time_obj, 'strftime'):
+        return time_obj.strftime("%H:%M")
+    return str(time_obj)[:5]
+
 # Configuration de la page (SANS sidebar par défaut)
 st.set_page_config(
     page_title="🚗 WashAfrique Pro - Nettoyage Esthétique",
@@ -401,10 +410,10 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     ponctualite_couleur = "#28a745"  # Vert par défaut
                     
                     if arrivees:
-                        premiere_arrivee = arrivees[0]['heure']
+                        premiere_arrivee = safe_time_to_str(arrivees[0]['heure'])
                         try:
                             heure_arrivee_dt = datetime.strptime(premiere_arrivee, "%H:%M")
-                            heure_attendue_dt = datetime.strptime(heure_ouverture, "%H:%M")
+                            heure_attendue_dt = datetime.strptime(safe_time_to_str(heure_ouverture), "%H:%M")
                             
                             diff = heure_arrivee_dt - heure_attendue_dt
                             diff_minutes = int(diff.total_seconds() / 60)
@@ -437,8 +446,8 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     duree_total = "N/A"
                     if arrivees and departs:
                         try:
-                            derniere_arrivee = datetime.strptime(arrivees[-1]['heure'], "%H:%M")
-                            dernier_depart = datetime.strptime(departs[-1]['heure'], "%H:%M")
+                            derniere_arrivee = datetime.strptime(safe_time_to_str(arrivees[-1]['heure']), "%H:%M")
+                            dernier_depart = datetime.strptime(safe_time_to_str(departs[-1]['heure']), "%H:%M")
                             duree = dernier_depart - derniere_arrivee
                             heures = duree.seconds // 3600
                             minutes = (duree.seconds % 3600) // 60
@@ -1502,14 +1511,16 @@ WashAfrique Pro - Gestion Station de Lavage
                             
                             col1, col2 = st.columns(2)
                             with col1:
+                                heure_debut_str = safe_time_to_str(creneau['heure_debut']) if actif else "08:00"
                                 heure_debut = st.time_input(
                                     "Heure début",
-                                    value=datetime.strptime(creneau['heure_debut'], "%H:%M").time() if actif else datetime.strptime("08:00", "%H:%M").time()
+                                    value=datetime.strptime(heure_debut_str, "%H:%M").time()
                                 )
                             with col2:
+                                heure_fin_str = safe_time_to_str(creneau['heure_fin']) if actif else "18:00"
                                 heure_fin = st.time_input(
                                     "Heure fin",
-                                    value=datetime.strptime(creneau['heure_fin'], "%H:%M").time() if actif else datetime.strptime("18:00", "%H:%M").time()
+                                    value=datetime.strptime(heure_fin_str, "%H:%M").time()
                                 )
                             
                             col1, col2 = st.columns(2)
