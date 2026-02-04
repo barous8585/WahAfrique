@@ -399,14 +399,14 @@ class DatabasePostgres:
         conn.close()
     
     # ===== SERVICES =====
-    def ajouter_service(self, nom: str, prix: float, duree: int, points: int = 1, description: str = "") -> int:
+    def ajouter_service(self, nom: str, prix: float, duree: int, description: str = "") -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO services (nom, prix, duree, points, description) VALUES (%s, %s, %s, %s, %s)",
-            (nom, prix, duree, points, description)
+            "INSERT INTO services (nom, prix, duree, description) VALUES (%s, %s, %s, %s) RETURNING id",
+            (nom, prix, duree, description)
         )
-        service_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        service_id = cursor.fetchone()['id']
         conn.commit()
         conn.close()
         return service_id
@@ -493,18 +493,15 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
-                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
-                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
-                   r.points_utilises, r.created_at,
+            SELECT r.id, r.client_id, r.service_id, r.employe_id,
+                   r.date, r.heure, r.statut, r.notes, r.created_at,
                    c.nom as client_nom, c.tel as client_tel, c.vehicule,
-                   s.nom as service_nom, s.duree, s.points as service_points,
-                   e.nom as employe_nom, p.nom as poste_nom
+                   s.nom as service_nom, s.prix, s.duree,
+                   u.username as employe_nom
             FROM reservations r
             LEFT JOIN clients c ON r.client_id = c.id
             LEFT JOIN services s ON r.service_id = s.id
-            LEFT JOIN employes e ON r.employe_id = e.id
-            LEFT JOIN postes p ON r.poste_id = p.id
+            LEFT JOIN users u ON r.employe_id = u.id
             WHERE r.date = %s
             ORDER BY r.heure
         """, (date,))

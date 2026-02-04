@@ -584,21 +584,19 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 nom_service = st.text_input("🏷️ Nom du service *", placeholder="Ex: Nettoyage Intérieur Premium")
                 description_service = st.text_area("📝 Description", placeholder="Décrivez le service en détail...")
                 
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 
                 with col1:
                     prix_service = st.number_input("💰 Prix (FCFA) *", min_value=1000, step=1000, value=10000)
                 with col2:
                     duree_service = st.number_input("⏱️ Durée (minutes) *", min_value=5, step=5, value=60)
-                with col3:
-                    points_service = st.number_input("⭐ Points fidélité", min_value=1, value=2)
                 
                 submitted = st.form_submit_button("✅ Créer le Service", use_container_width=True, type="primary")
                 
                 if submitted:
                     if nom_service and prix_service > 0 and duree_service > 0:
                         service_id = st.session_state.db.ajouter_service(
-                            nom_service, prix_service, duree_service, points_service, description_service
+                            nom_service, prix_service, duree_service, description_service
                         )
                         st.success(f"✅ Service '{nom_service}' créé avec succès !")
                         st.balloons()
