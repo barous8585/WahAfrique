@@ -27,18 +27,20 @@ class DatabasePostgres:
     
     def _get_config(self) -> dict:
         """Récupère configuration depuis st.secrets ou db_config.py"""
-        try:
-            # Priorité 1: Streamlit Secrets (pour Cloud)
-            if hasattr(st, 'secrets') and 'postgres' in st.secrets:
-                return {
-                    'host': st.secrets.postgres.host,
-                    'port': st.secrets.postgres.port,
-                    'database': st.secrets.postgres.database,
-                    'user': st.secrets.postgres.user,
-                    'password': st.secrets.postgres.password
-                }
-        except:
-            pass
+        # Priorité 1: Streamlit Secrets (pour Cloud)
+        if HAS_STREAMLIT:
+            try:
+                if hasattr(st, 'secrets') and 'postgres' in st.secrets:
+                    config = {
+                        'host': st.secrets.postgres.host,
+                        'port': int(st.secrets.postgres.port),
+                        'database': st.secrets.postgres.database,
+                        'user': st.secrets.postgres.user,
+                        'password': st.secrets.postgres.password
+                    }
+                    return config
+            except Exception as e:
+                pass
         
         # Priorité 2: Fichier local (pour développement)
         try:
@@ -52,7 +54,8 @@ class DatabasePostgres:
                 "2. Remplissez vos credentials Supabase\n\n"
                 "Pour Streamlit Cloud:\n"
                 "1. Settings → Secrets\n"
-                "2. Ajoutez section [postgres] avec credentials"
+                "2. Ajoutez section [postgres] avec credentials\n"
+                "3. Format: [postgres]\\n   host = \"...\"\\n   port = 5432"
             )
     
     def get_connection(self):
@@ -64,11 +67,20 @@ class DatabasePostgres:
                 database=self.config['database'],
                 user=self.config['user'],
                 password=self.config['password'],
-                cursor_factory=RealDictCursor
+                cursor_factory=RealDictCursor,
+                connect_timeout=10
             )
             return conn
         except psycopg2.OperationalError as e:
-            raise Exception(f"❌ Erreur connexion PostgreSQL: {str(e)}")
+            error_msg = str(e)
+            if "timeout" in error_msg.lower():
+                raise Exception(f"❌ Timeout connexion à Supabase. Vérifiez:\n1. Votre connexion Internet\n2. Host: {self.config['host']}\n3. Port: {self.config['port']}")
+            elif "password" in error_msg.lower():
+                raise Exception(f"❌ Authentification échouée. Vérifiez le mot de passe dans Secrets")
+            elif "could not translate" in error_msg.lower() or "resolve" in error_msg.lower():
+                raise Exception(f"❌ Host introuvable: {self.config['host']}\nVérifiez l'orthographe dans Secrets")
+            else:
+                raise Exception(f"❌ Erreur connexion PostgreSQL: {error_msg}")
     
     def init_database(self):
         """
