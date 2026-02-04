@@ -1,343 +1,391 @@
-"""
-Adaptateur PostgreSQL pour WashAfrique
-Remplace SQLite par PostgreSQL (Supabase)
-"""
-
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from typing import Optional, List, Dict, Any
-from datetime import datetime, date
+import sqlite3
+import json
+from datetime import datetime
+from typing import List, Dict, Optional
 import hashlib
-import random
-import string
 
-try:
-    import streamlit as st
-    HAS_STREAMLIT = True
-except ImportError:
-    HAS_STREAMLIT = False
-
-class DatabasePostgres:
-    """Classe Database adaptée pour PostgreSQL"""
-    
-    def __init__(self):
-        """Initialise la connexion PostgreSQL"""
-        self.config = self._get_config()
+class Database:
+    def __init__(self, db_name: str = "washafrique.db"):
+        self.db_name = db_name
         self.init_database()
     
-    def _get_config(self) -> dict:
-        """Récupère configuration depuis st.secrets ou db_config.py"""
-        # Priorité 1: Streamlit Secrets (pour Cloud)
-        if HAS_STREAMLIT:
-            try:
-                if hasattr(st, 'secrets') and 'postgres' in st.secrets:
-                    config = {
-                        'host': st.secrets.postgres.host,
-                        'port': int(st.secrets.postgres.port),
-                        'database': st.secrets.postgres.database,
-                        'user': st.secrets.postgres.user,
-                        'password': st.secrets.postgres.password
-                    }
-                    return config
-            except Exception as e:
-                pass
-        
-        # Priorité 2: Fichier local (pour développement)
-        try:
-            from db_config import DB_CONFIG
-            return DB_CONFIG
-        except ImportError:
-            raise Exception(
-                "❌ Configuration base de données manquante!\n\n"
-                "Pour développement local:\n"
-                "1. Copiez db_config.py.template → db_config.py\n"
-                "2. Remplissez vos credentials Supabase\n\n"
-                "Pour Streamlit Cloud:\n"
-                "1. Settings → Secrets\n"
-                "2. Ajoutez section [postgres] avec credentials\n"
-                "3. Format: [postgres]\\n   host = \"...\"\\n   port = 5432"
-            )
-    
     def get_connection(self):
-        """Crée une connexion PostgreSQL"""
-        try:
-            conn = psycopg2.connect(
-                host=self.config['host'],
-                port=self.config['port'],
-                database=self.config['database'],
-                user=self.config['user'],
-                password=self.config['password'],
-                cursor_factory=RealDictCursor,
-                connect_timeout=10
-            )
-            return conn
-        except psycopg2.OperationalError as e:
-            error_msg = str(e)
-            if "timeout" in error_msg.lower():
-                raise Exception(f"❌ Timeout connexion à Supabase. Vérifiez:\n1. Votre connexion Internet\n2. Host: {self.config['host']}\n3. Port: {self.config['port']}")
-            elif "password" in error_msg.lower():
-                raise Exception(f"❌ Authentification échouée. Vérifiez le mot de passe dans Secrets")
-            elif "could not translate" in error_msg.lower() or "resolve" in error_msg.lower():
-                raise Exception(f"❌ Host introuvable: {self.config['host']}\nVérifiez l'orthographe dans Secrets")
-            else:
-                raise Exception(f"❌ Erreur connexion PostgreSQL: {error_msg}")
+        conn = sqlite3.connect(self.db_name)
+        conn.row_factory = sqlite3.Row
+        return conn
     
     def init_database(self):
-        """
-        Crée toutes les tables PostgreSQL
-        Adapté depuis database.py (SQLite → PostgreSQL)
-        """
+        """Initialise toutes les tables de la base de données"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Table users
+        # Table utilisateurs (admins)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(100) UNIQUE NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                role VARCHAR(20) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Table employes
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS employes (
-                id SERIAL PRIMARY KEY,
-                nom VARCHAR(200) NOT NULL,
-                tel VARCHAR(20) NOT NULL,
-                poste VARCHAR(100),
-                salaire DECIMAL(10, 2),
-                actif BOOLEAN DEFAULT TRUE,
-                user_id INTEGER REFERENCES users(id),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Table services
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS services (
-                id SERIAL PRIMARY KEY,
-                nom VARCHAR(200) NOT NULL,
-                prix DECIMAL(10, 2) NOT NULL,
-                duree INTEGER NOT NULL,
-                description TEXT,
-                actif BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                email TEXT,
+                role TEXT DEFAULT 'admin',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         # Table clients
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS clients (
-                id SERIAL PRIMARY KEY,
-                nom VARCHAR(200) NOT NULL,
-                tel VARCHAR(20) NOT NULL UNIQUE,
-                email VARCHAR(200),
-                vehicule VARCHAR(100),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL,
+                tel TEXT UNIQUE NOT NULL,
+                email TEXT,
+                vehicule TEXT,
+                points_fidelite INTEGER DEFAULT 0,
+                total_depense REAL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Table reservations
+        # Table services
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL,
+                prix REAL NOT NULL,
+                duree INTEGER NOT NULL,
+                points INTEGER DEFAULT 1,
+                actif INTEGER DEFAULT 1,
+                description TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table postes de lavage
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS postes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL,
+                actif INTEGER DEFAULT 1
+            )
+        ''')
+        
+        # Table employés
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS employes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL,
+                tel TEXT,
+                poste TEXT,
+                salaire REAL DEFAULT 0,
+                user_id INTEGER,
+                actif INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Table réservations
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reservations (
-                id SERIAL PRIMARY KEY,
-                client_id INTEGER REFERENCES clients(id),
-                service_id INTEGER REFERENCES services(id),
-                employe_id INTEGER REFERENCES users(id),
-                date DATE NOT NULL,
-                heure TIME NOT NULL,
-                statut VARCHAR(20) DEFAULT 'en_cours',
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                service_id INTEGER NOT NULL,
+                poste_id INTEGER,
+                employe_id INTEGER,
+                date TEXT NOT NULL,
+                heure TEXT NOT NULL,
+                statut TEXT DEFAULT 'en_attente',
+                montant REAL NOT NULL,
+                montant_paye REAL DEFAULT 0,
+                methode_paiement TEXT,
                 notes TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                code_promo TEXT,
+                reduction REAL DEFAULT 0,
+                points_utilises INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients (id),
+                FOREIGN KEY (service_id) REFERENCES services (id),
+                FOREIGN KEY (poste_id) REFERENCES postes (id),
+                FOREIGN KEY (employe_id) REFERENCES employes (id)
             )
         ''')
         
         # Table paiements
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS paiements (
-                id SERIAL PRIMARY KEY,
-                reservation_id INTEGER REFERENCES reservations(id),
-                montant DECIMAL(10, 2) NOT NULL,
-                methode VARCHAR(50) NOT NULL,
-                date_paiement TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                notes TEXT
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reservation_id INTEGER NOT NULL,
+                montant REAL NOT NULL,
+                methode TEXT NOT NULL,
+                date_paiement TEXT DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                FOREIGN KEY (reservation_id) REFERENCES reservations (id)
             )
         ''')
         
-        # Table parametres
+        # Table codes promo
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS codes_promo (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                type TEXT NOT NULL,
+                valeur REAL NOT NULL,
+                date_debut TEXT,
+                date_fin TEXT,
+                utilisations_max INTEGER DEFAULT -1,
+                utilisations_actuelles INTEGER DEFAULT 0,
+                actif INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table récompenses fidélité
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS recompenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL,
+                points_requis INTEGER NOT NULL,
+                reduction REAL NOT NULL,
+                type TEXT DEFAULT 'pourcentage',
+                actif INTEGER DEFAULT 1
+            )
+        ''')
+        
+        # Table historique fidélité
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS historique_fidelite (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                reservation_id INTEGER,
+                points INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                description TEXT,
+                date TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients (id),
+                FOREIGN KEY (reservation_id) REFERENCES reservations (id)
+            )
+        ''')
+        
+        # Table produits/stock
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS produits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL,
+                quantite INTEGER DEFAULT 0,
+                seuil_alerte INTEGER DEFAULT 10,
+                unite TEXT DEFAULT 'unité',
+                prix_unitaire REAL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table mouvements stock
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mouvements_stock (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                produit_id INTEGER NOT NULL,
+                quantite INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                prix REAL DEFAULT 0,
+                notes TEXT,
+                date TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (produit_id) REFERENCES produits (id)
+            )
+        ''')
+        
+        # Table paramètres
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS parametres (
-                id SERIAL PRIMARY KEY,
-                cle VARCHAR(100) UNIQUE NOT NULL,
-                valeur TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                cle TEXT PRIMARY KEY,
+                valeur TEXT NOT NULL
             )
         ''')
         
-        # Table pointages
+        # Table notifications
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                titre TEXT NOT NULL,
+                message TEXT NOT NULL,
+                destinataire TEXT,
+                envoyee INTEGER DEFAULT 0,
+                date_envoi TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table pointages (nouveau)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS pointages (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id),
-                type VARCHAR(20) NOT NULL,
-                date DATE NOT NULL,
-                heure TIME NOT NULL,
-                notes TEXT
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                date TEXT NOT NULL,
+                heure TEXT NOT NULL,
+                timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
         
-        # Table photos_services
+        # Table photos avant/après (pour TikTok, Instagram)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS photos_services (
-                id SERIAL PRIMARY KEY,
-                reservation_id INTEGER REFERENCES reservations(id),
-                type_photo VARCHAR(20) NOT NULL,
-                photo_data BYTEA NOT NULL,
-                date_ajout TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                employe_id INTEGER REFERENCES users(id),
-                notes TEXT
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reservation_id INTEGER NOT NULL,
+                type_photo TEXT NOT NULL,
+                photo_data BLOB NOT NULL,
+                date_ajout TEXT DEFAULT CURRENT_TIMESTAMP,
+                employe_id INTEGER,
+                notes TEXT,
+                FOREIGN KEY (reservation_id) REFERENCES reservations (id),
+                FOREIGN KEY (employe_id) REFERENCES users (id)
             )
         ''')
         
-        # ===== TABLES SITE CLIENT =====
-        
-        # Table parametres_site_client
+        # Table paramètres site client
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS parametres_site_client (
-                id SERIAL PRIMARY KEY,
-                cle VARCHAR(100) UNIQUE NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cle TEXT UNIQUE NOT NULL,
                 valeur TEXT,
-                type VARCHAR(50) DEFAULT 'texte',
+                type TEXT DEFAULT 'texte',
                 description TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Table creneaux_disponibles
+        # Table horaires disponibles réservation web
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS creneaux_disponibles (
-                id SERIAL PRIMARY KEY,
-                jour_semaine VARCHAR(20) NOT NULL,
-                heure_debut TIME NOT NULL,
-                heure_fin TIME NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                jour_semaine TEXT NOT NULL,
+                heure_debut TEXT NOT NULL,
+                heure_fin TEXT NOT NULL,
                 intervalle_minutes INTEGER DEFAULT 30,
                 capacite_simultanee INTEGER DEFAULT 2,
-                actif BOOLEAN DEFAULT TRUE
+                actif INTEGER DEFAULT 1
             )
         ''')
         
-        # Table reservations_web
+        # Table réservations web (depuis site client)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reservations_web (
-                id SERIAL PRIMARY KEY,
-                code_reservation VARCHAR(20) UNIQUE NOT NULL,
-                nom_client VARCHAR(200) NOT NULL,
-                tel_client VARCHAR(20) NOT NULL,
-                email_client VARCHAR(200),
-                service_id INTEGER REFERENCES services(id),
-                date_reservation DATE NOT NULL,
-                heure_reservation TIME NOT NULL,
-                statut VARCHAR(20) DEFAULT 'en_attente',
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code_reservation TEXT UNIQUE NOT NULL,
+                nom_client TEXT NOT NULL,
+                tel_client TEXT NOT NULL,
+                email_client TEXT,
+                service_id INTEGER NOT NULL,
+                date_reservation TEXT NOT NULL,
+                heure_reservation TEXT NOT NULL,
+                statut TEXT DEFAULT 'en_attente',
                 notes_client TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                confirmed_at TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                confirmed_at TEXT,
+                FOREIGN KEY (service_id) REFERENCES services (id)
             )
         ''')
         
-        # Table avis_clients
+        # Table avis clients
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS avis_clients (
-                id SERIAL PRIMARY KEY,
-                reservation_web_id INTEGER REFERENCES reservations_web(id),
-                nom_client VARCHAR(200) NOT NULL,
-                note INTEGER NOT NULL CHECK (note BETWEEN 1 AND 5),
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reservation_web_id INTEGER,
+                nom_client TEXT NOT NULL,
+                note INTEGER NOT NULL,
                 commentaire TEXT,
                 photo_url TEXT,
-                visible BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                visible INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (reservation_web_id) REFERENCES reservations_web (id)
             )
         ''')
         
         conn.commit()
         
-        # Initialiser données par défaut
-        self._init_default_data(cursor, conn)
+        # Créer utilisateur admin par défaut
+        cursor.execute("SELECT COUNT(*) as count FROM users")
+        if cursor.fetchone()['count'] == 0:
+            password_hash = hashlib.sha256("admin123".encode()).hexdigest()
+            cursor.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                ("admin", password_hash, "admin")
+            )
+            conn.commit()
         
-        cursor.close()
+        # Créer poste par défaut
+        cursor.execute("SELECT COUNT(*) as count FROM postes")
+        if cursor.fetchone()['count'] == 0:
+            cursor.execute("INSERT INTO postes (nom, actif) VALUES ('Poste 1', 1), ('Poste 2', 1)")
+            conn.commit()
+        
+        # Créer récompenses par défaut
+        cursor.execute("SELECT COUNT(*) as count FROM recompenses")
+        if cursor.fetchone()['count'] == 0:
+            recompenses_defaut = [
+                ("Bronze - 5% OFF", 10, 5, "pourcentage"),
+                ("Silver - 10% OFF", 25, 10, "pourcentage"),
+                ("Gold - 15% OFF", 50, 15, "pourcentage"),
+                ("Platinum - 20% OFF", 100, 20, "pourcentage")
+            ]
+            cursor.executemany(
+                "INSERT INTO recompenses (nom, points_requis, reduction, type) VALUES (?, ?, ?, ?)",
+                recompenses_defaut
+            )
+            conn.commit()
+        
+        # Initialiser paramètres site client par défaut
+        cursor.execute("SELECT COUNT(*) as count FROM parametres_site_client")
+        if cursor.fetchone()['count'] == 0:
+            parametres_defaut = [
+                ("site_actif", "1", "boolean", "Site client activé/désactivé"),
+                ("nom_entreprise_site", "WashAfrique Pro", "texte", "Nom affiché sur site client"),
+                ("slogan", "Votre voiture mérite le meilleur", "texte", "Slogan page d'accueil"),
+                ("couleur_principale", "#667eea", "couleur", "Couleur principale site"),
+                ("telephone_contact", "+225 XX XX XX XX", "texte", "Numéro affiché"),
+                ("email_contact", "contact@washafrique.com", "texte", "Email contact"),
+                ("adresse", "Abidjan, Côte d'Ivoire", "texte", "Adresse entreprise"),
+                ("texte_accueil", "Réservez votre lavage en ligne", "textarea", "Texte page accueil"),
+                ("reservation_active", "1", "boolean", "Autoriser réservations"),
+                ("delai_min_reservation", "2", "nombre", "Heures min avant réservation"),
+                ("notif_email", "admin@washafrique.com", "texte", "Email notification réservations"),
+                ("notif_sms", "1", "boolean", "Activer SMS notification")
+            ]
+            cursor.executemany(
+                "INSERT INTO parametres_site_client (cle, valeur, type, description) VALUES (?, ?, ?, ?)",
+                parametres_defaut
+            )
+            conn.commit()
+        
+        # Initialiser créneaux horaires par défaut
+        cursor.execute("SELECT COUNT(*) as count FROM creneaux_disponibles")
+        if cursor.fetchone()['count'] == 0:
+            creneaux_defaut = [
+                ("lundi", "08:00", "18:00", 30, 2, 1),
+                ("mardi", "08:00", "18:00", 30, 2, 1),
+                ("mercredi", "08:00", "18:00", 30, 2, 1),
+                ("jeudi", "08:00", "18:00", 30, 2, 1),
+                ("vendredi", "08:00", "18:00", 30, 2, 1),
+                ("samedi", "08:00", "16:00", 30, 2, 1),
+                ("dimanche", "00:00", "00:00", 30, 0, 0)
+            ]
+            cursor.executemany(
+                "INSERT INTO creneaux_disponibles (jour_semaine, heure_debut, heure_fin, intervalle_minutes, capacite_simultanee, actif) VALUES (?, ?, ?, ?, ?, ?)",
+                creneaux_defaut
+            )
+            conn.commit()
+        
         conn.close()
     
-    def _init_default_data(self, cursor, conn):
-        """Initialise données par défaut (admin, paramètres, etc.)"""
-        
-        # Vérifier si admin existe
-        cursor.execute("SELECT COUNT(*) as count FROM users WHERE username = 'admin'")
-        if cursor.fetchone()['count'] == 0:
-            cursor.execute(
-                "INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
-                ('admin', 'admin123', 'admin')
-            )
-        
-        # Paramètres par défaut
-        params_defaut = [
-            ('nom_entreprise', 'WashAfrique Pro'),
-            ('heure_ouverture', '08:00'),
-            ('heure_fermeture', '19:00')
-        ]
-        
-        for cle, valeur in params_defaut:
-            cursor.execute(
-                "INSERT INTO parametres (cle, valeur) VALUES (%s, %s) ON CONFLICT (cle) DO NOTHING",
-                (cle, valeur)
-            )
-        
-        # Paramètres site client
-        params_site_defaut = [
-            ("site_actif", "1", "boolean", "Site client activé/désactivé"),
-            ("nom_entreprise_site", "WashAfrique Pro", "texte", "Nom affiché sur site client"),
-            ("slogan", "Votre voiture mérite le meilleur", "texte", "Slogan page d'accueil"),
-            ("couleur_principale", "#667eea", "couleur", "Couleur principale site"),
-            ("telephone_contact", "+225 XX XX XX XX", "texte", "Numéro affiché"),
-            ("email_contact", "contact@washafrique.com", "texte", "Email contact"),
-            ("adresse", "Abidjan, Côte d'Ivoire", "texte", "Adresse entreprise"),
-            ("texte_accueil", "Réservez votre lavage en ligne", "textarea", "Texte page accueil"),
-            ("reservation_active", "1", "boolean", "Autoriser réservations"),
-            ("delai_min_reservation", "2", "nombre", "Heures min avant réservation")
-        ]
-        
-        for cle, valeur, type_param, description in params_site_defaut:
-            cursor.execute(
-                """INSERT INTO parametres_site_client (cle, valeur, type, description) 
-                   VALUES (%s, %s, %s, %s) ON CONFLICT (cle) DO NOTHING""",
-                (cle, valeur, type_param, description)
-            )
-        
-        # Créneaux horaires
-        jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
-        for jour in jours:
-            cursor.execute(
-                """INSERT INTO creneaux_disponibles 
-                   (jour_semaine, heure_debut, heure_fin, intervalle_minutes, capacite_simultanee, actif)
-                   VALUES (%s, %s, %s, %s, %s, %s)
-                   ON CONFLICT DO NOTHING""",
-                (jour, '08:00' if jour != 'dimanche' else '00:00',
-                 '18:00' if jour != 'dimanche' else '00:00',
-                 30, 2, jour != 'dimanche')
-            )
-        
-        conn.commit()
-
-
+    # ===== USERS =====
     def verify_user(self, username: str, password: str) -> Optional[Dict]:
-        """Vérifie les credentials d'un utilisateur"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        # PostgreSQL: pas de hash pour l'instant (à améliorer en production)
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
         cursor.execute(
-            "SELECT id, username, role FROM users WHERE username = %s AND password = %s",
-            (username, password)
+            "SELECT * FROM users WHERE username = ? AND password_hash = ?",
+            (username, password_hash)
         )
         user = cursor.fetchone()
         conn.close()
@@ -348,10 +396,10 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO clients (nom, tel, email, vehicule) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO clients (nom, tel, email, vehicule) VALUES (?, ?, ?, ?)",
             (nom, tel, email, vehicule)
         )
-        client_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        client_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return client_id
@@ -359,7 +407,7 @@ class DatabasePostgres:
     def get_client_by_tel(self, tel: str) -> Optional[Dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM clients WHERE tel = %s", (tel,))
+        cursor.execute("SELECT * FROM clients WHERE tel = ?", (tel,))
         client = cursor.fetchone()
         conn.close()
         return dict(client) if client else None
@@ -377,12 +425,12 @@ class DatabasePostgres:
         cursor = conn.cursor()
         if operation == "add":
             cursor.execute(
-                "UPDATE clients SET points_fidelite = points_fidelite + %s WHERE id = %s",
+                "UPDATE clients SET points_fidelite = points_fidelite + ? WHERE id = ?",
                 (points, client_id)
             )
         else:
             cursor.execute(
-                "UPDATE clients SET points_fidelite = points_fidelite - %s WHERE id = %s",
+                "UPDATE clients SET points_fidelite = points_fidelite - ? WHERE id = ?",
                 (points, client_id)
             )
         conn.commit()
@@ -392,21 +440,21 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE clients SET total_depense = total_depense + %s WHERE id = %s",
+            "UPDATE clients SET total_depense = total_depense + ? WHERE id = ?",
             (montant, client_id)
         )
         conn.commit()
         conn.close()
     
     # ===== SERVICES =====
-    def ajouter_service(self, nom: str, prix: float, duree: int, description: str = "") -> int:
+    def ajouter_service(self, nom: str, prix: float, duree: int, points: int = 1, description: str = "") -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO services (nom, prix, duree, description) VALUES (%s, %s, %s, %s) RETURNING id",
-            (nom, prix, duree, description)
+            "INSERT INTO services (nom, prix, duree, points, description) VALUES (?, ?, ?, ?, ?)",
+            (nom, prix, duree, points, description)
         )
-        service_id = cursor.fetchone()['id']
+        service_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return service_id
@@ -415,7 +463,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         if actif_only:
-            cursor.execute("SELECT * FROM services WHERE actif = TRUE ORDER BY prix")
+            cursor.execute("SELECT * FROM services WHERE actif = 1 ORDER BY prix")
         else:
             cursor.execute("SELECT * FROM services ORDER BY prix")
         services = [dict(row) for row in cursor.fetchall()]
@@ -425,7 +473,7 @@ class DatabasePostgres:
     def delete_service(self, service_id: int):
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE services SET actif = FALSE WHERE id = %s", (service_id,))
+        cursor.execute("UPDATE services SET actif = 0 WHERE id = ?", (service_id,))
         conn.commit()
         conn.close()
     
@@ -434,7 +482,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         if actif_only:
-            cursor.execute("SELECT * FROM postes WHERE actif = TRUE")
+            cursor.execute("SELECT * FROM postes WHERE actif = 1")
         else:
             cursor.execute("SELECT * FROM postes")
         postes = [dict(row) for row in cursor.fetchall()]
@@ -446,10 +494,10 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO employes (nom, tel, poste, salaire) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO employes (nom, tel, poste, salaire) VALUES (?, ?, ?, ?)",
             (nom, tel, poste, salaire)
         )
-        employe_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        employe_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return employe_id
@@ -458,7 +506,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         if actif_only:
-            cursor.execute("SELECT * FROM employes WHERE actif = TRUE")
+            cursor.execute("SELECT * FROM employes WHERE actif = 1")
         else:
             cursor.execute("SELECT * FROM employes")
         employes = [dict(row) for row in cursor.fetchall()]
@@ -472,19 +520,23 @@ class DatabasePostgres:
         service_id: int,
         date: str,
         heure: str,
+        montant: float,
+        poste_id: int = None,
         employe_id: int = None,
-        notes: str = ""
+        notes: str = "",
+        code_promo: str = "",
+        reduction: float = 0,
+        points_utilises: int = 0
     ) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO reservations 
-            (client_id, service_id, employe_id, date, heure, notes, statut)
-            VALUES (%s, %s, %s, %s, %s, %s, 'en_attente')
-            RETURNING id""",
-            (client_id, service_id, employe_id, date, heure, notes)
+            (client_id, service_id, poste_id, employe_id, date, heure, montant, notes, code_promo, reduction, points_utilises, statut)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'en_attente')""",
+            (client_id, service_id, poste_id, employe_id, date, heure, montant, notes, code_promo, reduction, points_utilises)
         )
-        reservation_id = cursor.fetchone()['id']
+        reservation_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return reservation_id
@@ -493,16 +545,19 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT r.id, r.client_id, r.service_id, r.employe_id,
-                   r.date, r.heure, r.statut, r.notes, r.created_at,
+            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
+                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
+                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
+                   r.points_utilises, r.created_at,
                    c.nom as client_nom, c.tel as client_tel, c.vehicule,
-                   s.nom as service_nom, s.prix, s.duree,
-                   u.username as employe_nom
+                   s.nom as service_nom, s.duree, s.points as service_points,
+                   e.nom as employe_nom, p.nom as poste_nom
             FROM reservations r
             LEFT JOIN clients c ON r.client_id = c.id
             LEFT JOIN services s ON r.service_id = s.id
-            LEFT JOIN users u ON r.employe_id = u.id
-            WHERE r.date = %s
+            LEFT JOIN employes e ON r.employe_id = e.id
+            LEFT JOIN postes p ON r.poste_id = p.id
+            WHERE r.date = ?
             ORDER BY r.heure
         """, (date,))
         reservations = [dict(row) for row in cursor.fetchall()]
@@ -513,10 +568,12 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT r.id, r.client_id, r.service_id, r.employe_id,
-                   r.date, r.heure, r.statut, r.notes, r.created_at,
+            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
+                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
+                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
+                   r.points_utilises, r.created_at,
                    c.nom as client_nom, c.tel as client_tel, c.vehicule,
-                   s.nom as service_nom, s.prix, s.duree
+                   s.nom as service_nom, s.prix, s.duree, s.points as service_points
             FROM reservations r
             LEFT JOIN clients c ON r.client_id = c.id
             LEFT JOIN services s ON r.service_id = s.id
@@ -530,7 +587,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE reservations SET statut = %s WHERE id = %s",
+            "UPDATE reservations SET statut = ? WHERE id = ?",
             (statut, reservation_id)
         )
         conn.commit()
@@ -539,7 +596,7 @@ class DatabasePostgres:
     def delete_reservation(self, reservation_id: int):
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM reservations WHERE id = %s", (reservation_id,))
+        cursor.execute("DELETE FROM reservations WHERE id = ?", (reservation_id,))
         conn.commit()
         conn.close()
     
@@ -548,14 +605,14 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO paiements (reservation_id, montant, methode, notes) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO paiements (reservation_id, montant, methode, notes) VALUES (?, ?, ?, ?)",
             (reservation_id, montant, methode, notes)
         )
-        paiement_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        paiement_id = cursor.lastrowid
         
         # Mettre à jour le montant payé de la réservation
         cursor.execute(
-            "UPDATE reservations SET montant_paye = montant_paye + %s, methode_paiement = %s WHERE id = %s",
+            "UPDATE reservations SET montant_paye = montant_paye + ?, methode_paiement = ? WHERE id = ?",
             (montant, methode, reservation_id)
         )
         
@@ -595,10 +652,10 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO codes_promo (code, type, valeur, date_debut, date_fin, utilisations_max)
-            VALUES (%s, %s, %s, %s, %s, %s)""",
+            VALUES (?, ?, ?, ?, ?, ?)""",
             (code, type, valeur, date_debut, date_fin, utilisations_max)
         )
-        promo_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        promo_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return promo_id
@@ -608,7 +665,7 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute(
             """SELECT * FROM codes_promo 
-            WHERE code = %s AND actif = TRUE 
+            WHERE code = ? AND actif = 1 
             AND (utilisations_max = -1 OR utilisations_actuelles < utilisations_max)
             AND (date_debut IS NULL OR date_debut <= date('now'))
             AND (date_fin IS NULL OR date_fin >= date('now'))""",
@@ -622,7 +679,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE codes_promo SET utilisations_actuelles = utilisations_actuelles + 1 WHERE code = %s",
+            "UPDATE codes_promo SET utilisations_actuelles = utilisations_actuelles + 1 WHERE code = ?",
             (code,)
         )
         conn.commit()
@@ -636,12 +693,12 @@ class DatabasePostgres:
         today = datetime.now().strftime('%Y-%m-%d')
         
         # RDV aujourd'hui
-        cursor.execute("SELECT COUNT(*) as count FROM reservations WHERE date = %s", (today,))
+        cursor.execute("SELECT COUNT(*) as count FROM reservations WHERE date = ?", (today,))
         rdv_today = cursor.fetchone()['count']
         
         # Revenus aujourd'hui - Utilise la table paiements
         cursor.execute(
-            "SELECT SUM(montant) as total FROM paiements WHERE DATE(date_paiement) = %s",
+            "SELECT SUM(montant) as total FROM paiements WHERE DATE(date_paiement) = ?",
             (today,)
         )
         revenus_today = cursor.fetchone()['total'] or 0
@@ -664,7 +721,7 @@ class DatabasePostgres:
             FROM reservations r
             JOIN services s ON r.service_id = s.id
             WHERE r.statut != 'annule'
-            GROUP BY s.id, s.nom
+            GROUP BY r.service_id
             ORDER BY count DESC
             LIMIT 1
         """)
@@ -690,7 +747,7 @@ class DatabasePostgres:
             FROM paiements
             GROUP BY DATE(date_paiement)
             ORDER BY DATE(date_paiement) DESC
-            LIMIT %s
+            LIMIT ?
         """, (limit,))
         data = [dict(row) for row in cursor.fetchall()]
         conn.close()
@@ -704,7 +761,7 @@ class DatabasePostgres:
             FROM paiements p
             JOIN reservations r ON p.reservation_id = r.id
             JOIN services s ON r.service_id = s.id
-            GROUP BY s.id, s.nom
+            GROUP BY r.service_id
             ORDER BY nb_reservations DESC
         """)
         data = [dict(row) for row in cursor.fetchall()]
@@ -716,7 +773,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM recompenses WHERE actif = TRUE AND points_requis <= %s ORDER BY points_requis DESC",
+            "SELECT * FROM recompenses WHERE actif = 1 AND points_requis <= ? ORDER BY points_requis DESC",
             (points_client,)
         )
         recompenses = [dict(row) for row in cursor.fetchall()]
@@ -735,7 +792,7 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO historique_fidelite (client_id, reservation_id, points, type, description)
-            VALUES (%s, %s, %s, %s, %s)""",
+            VALUES (?, ?, ?, ?, ?)""",
             (client_id, reservation_id, points, type, description)
         )
         conn.commit()
@@ -746,10 +803,10 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO produits (nom, quantite, seuil_alerte, unite, prix_unitaire) VALUES (%s, %s, %s, %s, %s)",
+            "INSERT INTO produits (nom, quantite, seuil_alerte, unite, prix_unitaire) VALUES (?, ?, ?, ?, ?)",
             (nom, quantite, seuil_alerte, unite, prix_unitaire)
         )
-        produit_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        produit_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return produit_id
@@ -776,19 +833,19 @@ class DatabasePostgres:
         
         # Enregistrer le mouvement
         cursor.execute(
-            "INSERT INTO mouvements_stock (produit_id, quantite, type, prix, notes) VALUES (%s, %s, %s, %s, %s)",
+            "INSERT INTO mouvements_stock (produit_id, quantite, type, prix, notes) VALUES (?, ?, ?, ?, ?)",
             (produit_id, quantite, type, prix, notes)
         )
         
         # Mettre à jour la quantité
         if type == "entree":
             cursor.execute(
-                "UPDATE produits SET quantite = quantite + %s WHERE id = %s",
+                "UPDATE produits SET quantite = quantite + ? WHERE id = ?",
                 (quantite, produit_id)
             )
         else:
             cursor.execute(
-                "UPDATE produits SET quantite = quantite - %s WHERE id = %s",
+                "UPDATE produits SET quantite = quantite - ? WHERE id = ?",
                 (quantite, produit_id)
             )
         
@@ -828,10 +885,10 @@ class DatabasePostgres:
         password_hash = hashlib.sha256(password.encode()).hexdigest()
         try:
             cursor.execute(
-                "INSERT INTO users (username, password_hash, email, role) VALUES (%s, %s, %s, %s)",
+                "INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
                 (username, password_hash, email, "employe")
             )
-            user_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+            user_id = cursor.lastrowid
             conn.commit()
             conn.close()
             return user_id
@@ -844,7 +901,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE employes SET user_id = %s WHERE id = %s",
+            "UPDATE employes SET user_id = ? WHERE id = ?",
             (user_id, employe_id)
         )
         conn.commit()
@@ -854,7 +911,7 @@ class DatabasePostgres:
         """Désactive un employé (soft delete)"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE employes SET actif = FALSE WHERE id = %s", (employe_id,))
+        cursor.execute("UPDATE employes SET actif = 0 WHERE id = ?", (employe_id,))
         conn.commit()
         conn.close()
     
@@ -881,7 +938,7 @@ class DatabasePostgres:
         
         if updates:
             params.append(employe_id)
-            query = f"UPDATE employes SET {', '.join(updates)} WHERE id = %s"
+            query = f"UPDATE employes SET {', '.join(updates)} WHERE id = ?"
             cursor.execute(query, params)
             conn.commit()
         
@@ -898,10 +955,10 @@ class DatabasePostgres:
         heure_str = now.strftime("%H:%M")
         
         cursor.execute(
-            "INSERT INTO pointages (user_id, type, date, heure, notes) VALUES (%s, %s, %s, %s, %s)",
+            "INSERT INTO pointages (user_id, type, date, heure, notes) VALUES (?, ?, ?, ?, ?)",
             (user_id, type_pointage, date_str, heure_str, notes)
         )
-        pointage_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        pointage_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return pointage_id
@@ -914,7 +971,7 @@ class DatabasePostgres:
             SELECT p.*, u.username, u.role
             FROM pointages p
             LEFT JOIN users u ON p.user_id = u.id
-            WHERE p.date = %s
+            WHERE p.date = ?
             ORDER BY p.heure
         """, (date_str,))
         pointages = [dict(row) for row in cursor.fetchall()]
@@ -929,13 +986,13 @@ class DatabasePostgres:
         if date_debut and date_fin:
             cursor.execute("""
                 SELECT * FROM pointages
-                WHERE user_id = %s AND date BETWEEN %s AND %s
+                WHERE user_id = ? AND date BETWEEN ? AND ?
                 ORDER BY date DESC, heure DESC
             """, (user_id, date_debut, date_fin))
         else:
             cursor.execute("""
                 SELECT * FROM pointages
-                WHERE user_id = %s
+                WHERE user_id = ?
                 ORDER BY date DESC, heure DESC
                 LIMIT 30
             """, (user_id,))
@@ -951,7 +1008,7 @@ class DatabasePostgres:
         
         cursor.execute("""
             SELECT type, heure FROM pointages
-            WHERE user_id = %s AND date = %s
+            WHERE user_id = ? AND date = ?
             ORDER BY heure
         """, (user_id, date_str))
         
@@ -984,10 +1041,10 @@ class DatabasePostgres:
         cursor = conn.cursor()
         
         cursor.execute(
-            "INSERT INTO photos_services (reservation_id, type_photo, photo_data, employe_id, notes) VALUES (%s, %s, %s, %s, %s)",
+            "INSERT INTO photos_services (reservation_id, type_photo, photo_data, employe_id, notes) VALUES (?, ?, ?, ?, ?)",
             (reservation_id, type_photo, photo_data, employe_id, notes)
         )
-        photo_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        photo_id = cursor.lastrowid
         
         conn.commit()
         conn.close()
@@ -1004,12 +1061,12 @@ class DatabasePostgres:
         
         if type_photo:
             cursor.execute(
-                "SELECT * FROM photos_services WHERE reservation_id = %s AND type_photo = %s ORDER BY date_ajout",
+                "SELECT * FROM photos_services WHERE reservation_id = ? AND type_photo = ? ORDER BY date_ajout",
                 (reservation_id, type_photo)
             )
         else:
             cursor.execute(
-                "SELECT * FROM photos_services WHERE reservation_id = %s ORDER BY type_photo, date_ajout",
+                "SELECT * FROM photos_services WHERE reservation_id = ? ORDER BY type_photo, date_ajout",
                 (reservation_id,)
             )
         
@@ -1021,7 +1078,7 @@ class DatabasePostgres:
         """Supprime une photo spécifique"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM photos_services WHERE id = %s", (photo_id,))
+        cursor.execute("DELETE FROM photos_services WHERE id = ?", (photo_id,))
         conn.commit()
         conn.close()
     
@@ -1036,7 +1093,7 @@ class DatabasePostgres:
             JOIN services s ON r.service_id = s.id
             JOIN clients c ON r.client_id = c.id
             ORDER BY r.date DESC
-            LIMIT %s
+            LIMIT ?
         """, (limit,))
         reservations = [dict(row) for row in cursor.fetchall()]
         
@@ -1045,7 +1102,7 @@ class DatabasePostgres:
             cursor.execute("""
                 SELECT id, type_photo, photo_data, date_ajout
                 FROM photos_services
-                WHERE reservation_id = %s
+                WHERE reservation_id = ?
                 ORDER BY type_photo, date_ajout
             """, (res['reservation_id'],))
             res['photos'] = [dict(row) for row in cursor.fetchall()]
@@ -1060,7 +1117,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT valeur FROM parametres WHERE cle = %s", (cle,))
+        cursor.execute("SELECT valeur FROM parametres WHERE cle = ?", (cle,))
         result = cursor.fetchone()
         conn.close()
         
@@ -1075,7 +1132,7 @@ class DatabasePostgres:
         
         cursor.execute("""
             INSERT OR REPLACE INTO parametres (cle, valeur)
-            VALUES (%s, %s)
+            VALUES (?, ?)
         """, (cle, valeur))
         
         conn.commit()
@@ -1111,8 +1168,8 @@ class DatabasePostgres:
         
         if date_avant:
             # Supprimer services avant une date spécifique
-            cursor.execute("DELETE FROM reservations WHERE date_reservation < %s", (date_avant,))
-            cursor.execute("DELETE FROM paiements WHERE DATE(date_paiement) < %s", (date_avant,))
+            cursor.execute("DELETE FROM reservations WHERE date_reservation < ?", (date_avant,))
+            cursor.execute("DELETE FROM paiements WHERE DATE(date_paiement) < ?", (date_avant,))
         else:
             # Supprimer TOUT l'historique
             cursor.execute("DELETE FROM reservations")
@@ -1175,7 +1232,7 @@ class DatabasePostgres:
         """Récupère un paramètre du site client"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT valeur FROM parametres_site_client WHERE cle = %s", (cle,))
+        cursor.execute("SELECT valeur FROM parametres_site_client WHERE cle = ?", (cle,))
         result = cursor.fetchone()
         conn.close()
         return result['valeur'] if result else defaut
@@ -1185,7 +1242,7 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE parametres_site_client SET valeur = %s, updated_at = CURRENT_TIMESTAMP WHERE cle = %s",
+            "UPDATE parametres_site_client SET valeur = ?, updated_at = CURRENT_TIMESTAMP WHERE cle = ?",
             (valeur, cle)
         )
         conn.commit()
@@ -1200,10 +1257,6 @@ class DatabasePostgres:
         conn.close()
         return parametres
     
-    def get_parametres_site_client(self) -> List[Dict]:
-        """Alias pour get_all_parametres_site_client()"""
-        return self.get_all_parametres_site_client()
-    
     # ===== SITE CLIENT - CRÉNEAUX HORAIRES =====
     def get_creneaux_disponibles(self, jour_semaine: str = None) -> List[Dict]:
         """Récupère les créneaux horaires disponibles"""
@@ -1211,7 +1264,7 @@ class DatabasePostgres:
         cursor = conn.cursor()
         if jour_semaine:
             cursor.execute(
-                "SELECT * FROM creneaux_disponibles WHERE jour_semaine = %s AND actif = TRUE",
+                "SELECT * FROM creneaux_disponibles WHERE jour_semaine = ? AND actif = 1",
                 (jour_semaine,)
             )
         else:
@@ -1227,9 +1280,9 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE creneaux_disponibles 
-            SET heure_debut = %s, heure_fin = %s, intervalle_minutes = %s, 
-                capacite_simultanee = %s, actif = %s
-            WHERE jour_semaine = %s
+            SET heure_debut = ?, heure_fin = ?, intervalle_minutes = ?, 
+                capacite_simultanee = ?, actif = ?
+            WHERE jour_semaine = ?
         """, (heure_debut, heure_fin, intervalle, capacite, actif, jour_semaine))
         conn.commit()
         conn.close()
@@ -1251,7 +1304,7 @@ class DatabasePostgres:
             INSERT INTO reservations_web 
             (code_reservation, nom_client, tel_client, email_client, service_id, 
              date_reservation, heure_reservation, notes_client)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (code, nom, tel, email, service_id, date, heure, notes))
         
         conn.commit()
@@ -1266,7 +1319,7 @@ class DatabasePostgres:
             SELECT r.*, s.nom as service_nom, s.prix, s.duree
             FROM reservations_web r
             JOIN services s ON r.service_id = s.id
-            WHERE r.code_reservation = %s
+            WHERE r.code_reservation = ?
         """, (code,))
         result = cursor.fetchone()
         conn.close()
@@ -1294,7 +1347,7 @@ class DatabasePostgres:
         cursor.execute("""
             UPDATE reservations_web 
             SET statut = 'confirmee', confirmed_at = CURRENT_TIMESTAMP
-            WHERE code_reservation = %s
+            WHERE code_reservation = ?
         """, (code,))
         conn.commit()
         conn.close()
@@ -1306,7 +1359,7 @@ class DatabasePostgres:
         cursor.execute("""
             UPDATE reservations_web 
             SET statut = 'annulee'
-            WHERE code_reservation = %s
+            WHERE code_reservation = ?
         """, (code,))
         conn.commit()
         conn.close()
@@ -1319,9 +1372,9 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO avis_clients (reservation_web_id, nom_client, note, commentaire)
-            VALUES (%s, %s, %s, %s)
+            VALUES (?, ?, ?, ?)
         """, (reservation_web_id, nom, note, commentaire))
-        avis_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        avis_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return avis_id
@@ -1332,9 +1385,9 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM avis_clients 
-            WHERE visible = TRUE 
+            WHERE visible = 1 
             ORDER BY created_at DESC 
-            LIMIT %s
+            LIMIT ?
         """, (limit,))
         avis = [dict(row) for row in cursor.fetchall()]
         conn.close()
@@ -1346,110 +1399,8 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE avis_clients 
-            SET visible = NOT visible
-            WHERE id = %s
+            SET visible = CASE WHEN visible = 1 THEN 0 ELSE 1 END
+            WHERE id = ?
         """, (avis_id,))
         conn.commit()
         conn.close()
-
-
-
-    def get_all_users(self) -> List[Dict]:
-        """Récupère tous les utilisateurs"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, username, role, created_at FROM users ORDER BY created_at DESC")
-        users = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return users
-    
-    def get_total_ca(self) -> float:
-        """Calcule le chiffre d'affaires total"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COALESCE(SUM(montant), 0) as total FROM paiements")
-        result = cursor.fetchone()
-        conn.close()
-        return float(result['total']) if result and result['total'] else 0.0
-    def get_ca_periode(self, date_debut: date, date_fin: date) -> float:
-        """Récupère le CA sur une période"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COALESCE(SUM(montant), 0) as total
-            FROM paiements
-            WHERE DATE(date_paiement) BETWEEN %s AND %s
-        """, (date_debut, date_fin))
-        result = cursor.fetchone()
-        conn.close()
-        return float(result['total']) if result and result['total'] else 0.0
-    
-    def get_service(self, service_id: int) -> Dict:
-        """Récupère un service par ID"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM services WHERE id = %s", (service_id,))
-        service = cursor.fetchone()
-        conn.close()
-        return dict(service) if service else None
-    
-    def get_reservations_jour(self, date_recherche: date) -> List[Dict]:
-        """Récupère les réservations d'un jour"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT r.*, c.nom as client_nom, c.tel as client_tel,
-                   s.nom as service_nom, s.prix, s.duree
-            FROM reservations r
-            LEFT JOIN clients c ON r.client_id = c.id
-            LEFT JOIN services s ON r.service_id = s.id
-            WHERE r.date = %s
-            ORDER BY r.heure
-        """, (date_recherche,))
-        reservations = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return reservations
-    
-    def get_reservations_periode(self, date_debut: date, date_fin: date) -> List[Dict]:
-        """Récupère les réservations sur une période"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT r.*, c.nom as client_nom, c.tel as client_tel,
-                   s.nom as service_nom, s.prix, s.duree
-            FROM reservations r
-            LEFT JOIN clients c ON r.client_id = c.id
-            LEFT JOIN services s ON r.service_id = s.id
-            WHERE r.date BETWEEN %s AND %s
-            ORDER BY r.date DESC, r.heure DESC
-        """, (date_debut, date_fin))
-        reservations = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return reservations
-    
-    def get_all_pointages(self) -> List[Dict]:
-        """Récupère tous les pointages"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT p.*, u.username, u.role
-            FROM pointages p
-            LEFT JOIN users u ON p.user_id = u.id
-            ORDER BY p.date DESC, p.heure DESC
-        """)
-        pointages = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return pointages
-    
-    def get_all_creneaux(self) -> List[Dict]:
-        """Récupère tous les créneaux horaires"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM creneaux_disponibles ORDER BY jour_semaine, heure_debut")
-        creneaux = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return creneaux
-
-
-# Alias pour compatibilité avec le code existant
-Database = DatabasePostgres
