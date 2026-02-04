@@ -32,9 +32,18 @@ st.set_page_config(
 if "db" not in st.session_state:
     st.session_state.db = Database()
 
-# Style CSS moderne SANS sidebar
+# Forcer le thème light en cachant le sélecteur de thème
 st.markdown("""
     <style>
+    /* FORCER THÈME LIGHT - Cacher menu thème */
+    [data-testid="stToolbar"] {
+        display: none !important;
+    }
+    
+    button[kind="header"] {
+        display: none !important;
+    }
+    
     /* Cacher complètement la sidebar */
     [data-testid="stSidebar"] {
         display: none;

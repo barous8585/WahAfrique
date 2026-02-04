@@ -41,6 +41,15 @@ reservation_active = st.session_state.db.get_parametre_site_client('reservation_
 # Style CSS personnalisé
 st.markdown(f"""
     <style>
+    /* FORCER THÈME LIGHT - Cacher menu thème */
+    [data-testid="stToolbar"] {{
+        display: none !important;
+    }}
+    
+    button[kind="header"] {{
+        display: none !important;
+    }}
+    
     /* Header */
     .header-client {{
         background: linear-gradient(135deg, {couleur_principale} 0%, #764ba2 100%);
