@@ -1207,6 +1207,10 @@ class DatabasePostgres:
         conn.close()
         return parametres
     
+    def get_parametres_site_client(self) -> List[Dict]:
+        """Alias pour get_all_parametres_site_client()"""
+        return self.get_all_parametres_site_client()
+    
     # ===== SITE CLIENT - CRÉNEAUX HORAIRES =====
     def get_creneaux_disponibles(self, jour_semaine: str = None) -> List[Dict]:
         """Récupère les créneaux horaires disponibles"""
@@ -1374,6 +1378,84 @@ class DatabasePostgres:
         result = cursor.fetchone()
         conn.close()
         return float(result['total']) if result and result['total'] else 0.0
+    def get_ca_periode(self, date_debut: date, date_fin: date) -> float:
+        """Récupère le CA sur une période"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COALESCE(SUM(montant), 0) as total
+            FROM paiements
+            WHERE DATE(date_paiement) BETWEEN %s AND %s
+        """, (date_debut, date_fin))
+        result = cursor.fetchone()
+        conn.close()
+        return float(result['total']) if result and result['total'] else 0.0
+    
+    def get_service(self, service_id: int) -> Dict:
+        """Récupère un service par ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM services WHERE id = %s", (service_id,))
+        service = cursor.fetchone()
+        conn.close()
+        return dict(service) if service else None
+    
+    def get_reservations_jour(self, date_recherche: date) -> List[Dict]:
+        """Récupère les réservations d'un jour"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT r.*, c.nom as client_nom, c.tel as client_tel,
+                   s.nom as service_nom, s.prix, s.duree
+            FROM reservations r
+            LEFT JOIN clients c ON r.client_id = c.id
+            LEFT JOIN services s ON r.service_id = s.id
+            WHERE r.date = %s
+            ORDER BY r.heure
+        """, (date_recherche,))
+        reservations = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return reservations
+    
+    def get_reservations_periode(self, date_debut: date, date_fin: date) -> List[Dict]:
+        """Récupère les réservations sur une période"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT r.*, c.nom as client_nom, c.tel as client_tel,
+                   s.nom as service_nom, s.prix, s.duree
+            FROM reservations r
+            LEFT JOIN clients c ON r.client_id = c.id
+            LEFT JOIN services s ON r.service_id = s.id
+            WHERE r.date BETWEEN %s AND %s
+            ORDER BY r.date DESC, r.heure DESC
+        """, (date_debut, date_fin))
+        reservations = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return reservations
+    
+    def get_all_pointages(self) -> List[Dict]:
+        """Récupère tous les pointages"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.*, u.username, u.role
+            FROM pointages p
+            LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.date DESC, p.heure DESC
+        """)
+        pointages = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return pointages
+    
+    def get_all_creneaux(self) -> List[Dict]:
+        """Récupère tous les créneaux horaires"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM creneaux_disponibles ORDER BY jour_semaine, heure_debut")
+        creneaux = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return creneaux
 
 
 # Alias pour compatibilité avec le code existant
