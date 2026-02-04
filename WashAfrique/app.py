@@ -2145,6 +2145,7 @@ else:  # EMPLOYÉ
                             service_id=service_id,
                             date=now.strftime("%Y-%m-%d"),
                             heure=now.strftime("%H:%M"),
+                            montant=service_choisi['prix'],
                             employe_id=st.session_state.user['id'],
                             notes=notes
                         )
