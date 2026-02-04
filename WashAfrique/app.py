@@ -1664,8 +1664,8 @@ WashAfrique Pro - Gestion Station de Lavage
         with sub_tabs[0]:
             st.subheader("👤 Mes Informations")
             
-            # Récupérer le profil actuel
-            profil = st.session_state.db.get_profil_proprietaire(st.session_state.user['user_id'])
+            # Récupérer le profil actuel (utiliser 'id' pas 'user_id')
+            profil = st.session_state.db.get_profil_proprietaire(st.session_state.user['id'])
             
             with st.form("profil_proprio"):
                 col1, col2 = st.columns(2)
@@ -1680,7 +1680,7 @@ WashAfrique Pro - Gestion Station de Lavage
                 
                 if st.form_submit_button("💾 Enregistrer", use_container_width=True, type="primary"):
                     st.session_state.db.set_profil_proprietaire(
-                        user_id=st.session_state.user['user_id'],
+                        user_id=st.session_state.user['id'],
                         nom_complet=nom_proprio,
                         telephone=tel_proprio,
                         email=email_proprio,
@@ -1769,11 +1769,11 @@ WashAfrique Pro - Gestion Station de Lavage
                         st.error("⚠️ Veuillez remplir tous les champs")
                     elif len(nouveau_username) < 3:
                         st.error("⚠️ Le nom d'utilisateur doit contenir au moins 3 caractères")
-                    elif not st.session_state.db.verify_password(st.session_state.user['user_id'], password_confirm_username):
+                    elif not st.session_state.db.verify_password(st.session_state.user['id'], password_confirm_username):
                         st.error("❌ Mot de passe incorrect")
                     else:
                         success = st.session_state.db.changer_username(
-                            st.session_state.user['user_id'], 
+                            st.session_state.user['id'], 
                             nouveau_username
                         )
                         if success:
@@ -1801,11 +1801,11 @@ WashAfrique Pro - Gestion Station de Lavage
                         st.error("⚠️ Le nouveau mot de passe doit contenir au moins 6 caractères")
                     elif nouveau_mdp != confirmer_mdp:
                         st.error("❌ Les mots de passe ne correspondent pas")
-                    elif not st.session_state.db.verify_password(st.session_state.user['user_id'], ancien_mdp):
+                    elif not st.session_state.db.verify_password(st.session_state.user['id'], ancien_mdp):
                         st.error("❌ Le mot de passe actuel est incorrect")
                     else:
                         st.session_state.db.changer_mot_de_passe(
-                            st.session_state.user['user_id'],
+                            st.session_state.user['id'],
                             nouveau_mdp
                         )
                         st.success("✅ Mot de passe changé avec succès")
