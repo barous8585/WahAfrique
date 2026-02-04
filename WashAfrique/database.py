@@ -520,12 +520,10 @@ class DatabasePostgres:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT r.id, r.client_id, r.service_id, r.poste_id, r.employe_id,
-                   r.date, r.heure, r.statut, r.montant, r.montant_paye,
-                   r.methode_paiement, r.notes, r.code_promo, r.reduction,
-                   r.points_utilises, r.created_at,
+            SELECT r.id, r.client_id, r.service_id, r.employe_id,
+                   r.date, r.heure, r.statut, r.notes, r.created_at,
                    c.nom as client_nom, c.tel as client_tel, c.vehicule,
-                   s.nom as service_nom, s.prix, s.duree, s.points as service_points
+                   s.nom as service_nom, s.prix, s.duree
             FROM reservations r
             LEFT JOIN clients c ON r.client_id = c.id
             LEFT JOIN services s ON r.service_id = s.id
