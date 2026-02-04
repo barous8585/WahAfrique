@@ -530,8 +530,6 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     with col3:
                         st.write(f"⏱️ {service['duree']} min")
                     with col4:
-                        st.write(f"⭐ {service['points']} pts")
-                    with col5:
                         if service['actif']:
                             st.success("✅")
                         else:
@@ -557,7 +555,6 @@ if user_role == "admin":  # PROPRIÉTAIRE
                                 new_nom = st.text_input("Nom du service", value=service['nom'])
                                 new_prix = st.number_input("Prix (FCFA)", value=float(service['prix']), step=1000.0)
                                 new_duree = st.number_input("Durée (minutes)", value=int(service['duree']), step=5)
-                                new_points = st.number_input("Points fidélité", value=int(service['points']))
                                 new_desc = st.text_area("Description", value=service.get('description', ''))
                                 
                                 col_save, col_cancel = st.columns(2)
@@ -567,9 +564,9 @@ if user_role == "admin":  # PROPRIÉTAIRE
                                         cursor = conn.cursor()
                                         cursor.execute("""
                                             UPDATE services 
-                                            SET nom = ?, prix = ?, duree = ?, points = ?, description = ?
-                                            WHERE id = ?
-                                        """, (new_nom, new_prix, new_duree, new_points, new_desc, service['id']))
+                                            SET nom = %s, prix = %s, duree = %s, description = %s
+                                            WHERE id = %s
+                                        """, (new_nom, new_prix, new_duree, new_desc, service['id']))
                                         conn.commit()
                                         conn.close()
                                         st.success("✅ Service modifié !")
@@ -753,10 +750,8 @@ if user_role == "admin":  # PROPRIÉTAIRE
                         
                         with col2:
                             st.write(f"**Service:** {res['service_nom']}")
-                            st.write(f"**Prix:** {format_fcfa(res['montant'])}")
-                            st.write(f"**Montant payé:** {format_fcfa(res['montant_paye'])}")
-                            st.write(f"**Méthode:** {res.get('methode_paiement', 'N/A')}")
-                            st.success("💰 PAYÉ")
+                            st.write(f"**Prix:** {format_fcfa(res.get('prix', 0))}")
+                            st.success("💰 À PAYER")
                         
                         if res.get('notes'):
                             st.info(f"📝 Notes: {res['notes']}")
@@ -863,7 +858,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                     
                     with col2:
                         st.write(f"💰 **{format_fcfa(p['montant'])}**")
-                        methode = p.get('methode_paiement', 'N/A')
+                        methode = p.get('methode', 'N/A')
                         emoji = "💵" if methode == "Espèces" else "💳" if methode == "Carte" else "📱"
                         st.caption(f"{emoji} {methode}")
                     
@@ -912,7 +907,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 
                 methodes = {}
                 for p in paiements:
-                    m = p.get('methode_paiement', 'Non défini')
+                    m = p.get('methode', 'Non défini')
                     methodes[m] = methodes.get(m, {'count': 0, 'montant': 0})
                     methodes[m]['count'] += 1
                     methodes[m]['montant'] += p['montant']
@@ -955,7 +950,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 paiements = [p for p in paiements if search_client.lower() in p.get('client_nom', '').lower()]
             
             if methode_filter != "Toutes":
-                paiements = [p for p in paiements if p.get('methode_paiement') == methode_filter]
+                paiements = [p for p in paiements if p.get('methode') == methode_filter]
             
             if paiements:
                 st.success(f"✅ **{len(paiements)} résultat(s)** | Total: {format_fcfa(sum(p['montant'] for p in paiements))}")
@@ -963,7 +958,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 for p in paiements[:10]:
                     st.markdown(f"""
                     **{p.get('client_nom', 'N/A')}** | {p.get('service_nom', 'N/A')}  
-                    💰 {format_fcfa(p['montant'])} | 📅 {p['date_paiement'][:10]} | 💳 {p.get('methode_paiement', 'N/A')}
+                    💰 {format_fcfa(p['montant'])} | 📅 {p['date_paiement'][:10]} | 💳 {p.get('methode', 'N/A')}
                     """)
                     st.markdown("---")
             else:
@@ -1117,7 +1112,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
             if paiements_periode:
                 methodes_count = {}
                 for p in paiements_periode:
-                    methode = p.get('methode_paiement', 'Non défini')
+                    methode = p.get('methode', 'Non défini')
                     methodes_count[methode] = methodes_count.get(methode, 0) + p['montant']
                 
                 col_methode, col_montant = st.columns(2)
@@ -2032,12 +2027,6 @@ else:  # EMPLOYÉ
                         format_func=lambda x: f"{next(s['nom'] for s in services if s['id'] == x)} - {format_fcfa(next(s['prix'] for s in services if s['id'] == x))}"
                     )
                 
-                with col_post:
-                    poste_id = st.selectbox(
-                        "🏢 Poste de lavage",
-                        options=[p['id'] for p in st.session_state.db.get_all_postes()],
-                        format_func=lambda x: next(p['nom'] for p in st.session_state.db.get_all_postes() if p['id'] == x)
-                    )
                 
                 notes = st.text_area("📝 Notes (optionnel)", placeholder="Instructions spéciales...")
                 
@@ -2056,7 +2045,11 @@ else:  # EMPLOYÉ
                             client_id = client_existant['id']
                             # Mettre à jour le véhicule si modifié
                             if vehicule_input != client_existant.get('vehicule', ''):
-                                st.session_state.db.cursor.execute("UPDATE clients SET vehicule = ? WHERE id = ?", (vehicule_input, client_id))
+                                conn = st.session_state.db.get_connection()
+                                cursor = conn.cursor()
+                                cursor.execute("UPDATE clients SET vehicule = %s WHERE id = %s", (vehicule_input, client_id))
+                                conn.commit()
+                                conn.close()
                         else:
                             client_id = st.session_state.db.ajouter_client(nom_client, tel_client, "", vehicule_input)
                         
@@ -2067,14 +2060,9 @@ else:  # EMPLOYÉ
                             service_id=service_id,
                             date=now.strftime("%Y-%m-%d"),
                             heure=now.strftime("%H:%M"),
-                            montant=service_choisi['prix'],
-                            poste_id=poste_id,
-                            employe_id=st.session_state.user['id'],  # ID de l'employé connecté
+                            employe_id=st.session_state.user['id'],
                             notes=notes
                         )
-                        
-                        # Ajouter les points de fidélité
-                        st.session_state.db.update_client_points(client_id, service_choisi['points'], "add")
                         
                         # Réinitialiser la sélection
                         if 'client_selectionne' in st.session_state:
@@ -2090,7 +2078,6 @@ else:  # EMPLOYÉ
                         - **Véhicule:** {vehicule_input}
                         - **Service:** {service_choisi['nom']}
                         - **Prix:** {format_fcfa(service_choisi['prix'])}
-                        - **Points gagnés:** +{service_choisi['points']} points
                         - **Réservation N°:** {reservation_id:05d}
                         """)
                         

@@ -472,23 +472,19 @@ class DatabasePostgres:
         service_id: int,
         date: str,
         heure: str,
-        montant: float,
-        poste_id: int = None,
         employe_id: int = None,
-        notes: str = "",
-        code_promo: str = "",
-        reduction: float = 0,
-        points_utilises: int = 0
+        notes: str = ""
     ) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO reservations 
-            (client_id, service_id, poste_id, employe_id, date, heure, montant, notes, code_promo, reduction, points_utilises, statut)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'en_attente')""",
-            (client_id, service_id, poste_id, employe_id, date, heure, montant, notes, code_promo, reduction, points_utilises)
+            (client_id, service_id, employe_id, date, heure, notes, statut)
+            VALUES (%s, %s, %s, %s, %s, %s, 'en_attente')
+            RETURNING id""",
+            (client_id, service_id, employe_id, date, heure, notes)
         )
-        reservation_id = cursor.fetchone()['id']  # PostgreSQL: nécessite RETURNING id dans l'INSERT
+        reservation_id = cursor.fetchone()['id']
         conn.commit()
         conn.close()
         return reservation_id
