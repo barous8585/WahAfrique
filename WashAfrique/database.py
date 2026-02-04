@@ -1323,7 +1323,7 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM avis_clients 
-            WHERE visible = 1 
+            WHERE visible = TRUE 
             ORDER BY created_at DESC 
             LIMIT %s
         """, (limit,))
@@ -1337,7 +1337,7 @@ class DatabasePostgres:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE avis_clients 
-            SET visible = CASE WHEN visible = 1 THEN 0 ELSE 1 END
+            SET visible = NOT visible
             WHERE id = %s
         """, (avis_id,))
         conn.commit()
