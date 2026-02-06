@@ -353,16 +353,16 @@ if user_role == "admin":  # PROPRIÉTAIRE
             st.subheader("➕ Ajouter un Nouvel Employé")
             
             with st.form("nouvel_employe"):
-                nom = st.text_input("👤 Nom complet *", placeholder="Ex: Jean Kouassi")
+                nom = st.text_input("👤 Nom complet *", placeholder="Ex: Ousmane Diallo")
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    tel = st.text_input("📞 Téléphone *", placeholder="+225 XX XX XX XX")
+                    tel = st.text_input("📞 Téléphone *", placeholder="+221 XX XXX XX XX")
                     username_emp = st.text_input("🔐 Nom d'utilisateur *", placeholder="jean.k")
                 
                 with col2:
-                    poste = st.text_input("🏷️ Poste", placeholder="Ex: Nettoyeur")
+                    poste = st.text_input("🏷️ Poste", placeholder="Ex: Laveur")
                     password_emp = st.text_input("🔒 Mot de passe *", type="password", placeholder="Minimum 6 caractères")
                 
                 salaire = st.number_input("💰 Salaire mensuel (FCFA)", min_value=0, step=10000, value=100000)
@@ -656,7 +656,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                 with col1:
                     st.markdown("#### 👤 Informations Client")
                     
-                    tel_search = st.text_input("📞 Rechercher par téléphone", placeholder="+225 XX XX XX XX")
+                    tel_search = st.text_input("📞 Rechercher par téléphone", placeholder="+221 XX XXX XX XX")
                     client_existant = None
                     
                     if tel_search:
@@ -670,7 +670,7 @@ if user_role == "admin":  # PROPRIÉTAIRE
                         vehicule = st.text_input("🚗 Véhicule", value=client_existant.get('vehicule', ''))
                     else:
                         nom = st.text_input("👤 Nom *", placeholder="Nom du client")
-                        tel = st.text_input("📞 Téléphone *", value=tel_search, placeholder="+225 XX XX XX XX")
+                        tel = st.text_input("📞 Téléphone *", value=tel_search, placeholder="+221 XX XXX XX XX")
                         vehicule = st.text_input("🚗 Véhicule *", placeholder="Marque et modèle")
                 
                 with col2:
@@ -1449,7 +1449,7 @@ WashAfrique Pro - Gestion Station de Lavage
                     st.markdown("**📞 Contact**")
                     tel_site = st.text_input(
                         "Téléphone",
-                        value=st.session_state.db.get_parametre_site_client('telephone_contact', '+225 XX XX XX XX')
+                        value=st.session_state.db.get_parametre_site_client('telephone_contact', '+221 XX XXX XX XX')
                     )
                     email_site = st.text_input(
                         "Email",
@@ -2089,7 +2089,7 @@ else:  # EMPLOYÉ
                     col1, col2 = st.columns(2)
                     with col1:
                         nom_client = st.text_input("👤 Nom du client *", placeholder="Nom complet")
-                        tel_client = st.text_input("📞 Téléphone *", placeholder="+225 XX XX XX XX")
+                        tel_client = st.text_input("📞 Téléphone *", placeholder="+221 XX XXX XX XX")
                     with col2:
                         vehicule_input = st.text_input("🚗 Véhicule *", placeholder="Marque et modèle")
                     client_existant = None

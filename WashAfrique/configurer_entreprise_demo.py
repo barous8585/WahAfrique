@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Script pour remplir les informations de l'entreprise démo
+Script pour remplir les informations de l'entreprise démo - SÉNÉGAL
 """
 
 from database import Database
 
-print("🏢 CONFIGURATION ENTREPRISE DÉMO")
+print("🇸🇳 CONFIGURATION ENTREPRISE DÉMO - SÉNÉGAL")
 print("=" * 70)
 
 db = Database()
@@ -21,6 +21,17 @@ db.set_info_entreprise(
     site_web="www.washafrique.sn"
 )
 print("   ✅ Informations entreprise enregistrées")
+
+# Paramètres site client - Format Sénégal
+print("\n🌐 Configuration site client...")
+db.set_parametre('couleur_principale', '#1E88E5')
+db.set_parametre('texte_accueil', 'Bienvenue chez WashAfrique Pro ! Le meilleur service de lavage automobile à Dakar.')
+db.set_parametre('slogan', '✨ Votre voiture mérite le meilleur ✨')
+db.set_parametre('email_notifications', 'notifications@washafrique.sn')
+db.set_parametre('telephone_contact', '+221 33 825 40 50')
+db.set_parametre('email_contact', 'contact@washafrique.sn')
+db.set_parametre('adresse', 'Almadies, Dakar, Sénégal')
+print("   ✅ Site client configuré (Format Sénégal +221)")
 
 # Horaires (Lundi à Samedi 8h-19h, Dimanche fermé)
 print("\n⏰ Configuration horaires...")
@@ -40,14 +51,6 @@ for jour, heures in horaires.items():
 
 print("   ✅ Horaires configurés (Lun-Sam 8h-19h)")
 
-# Paramètres site client
-print("\n🌐 Configuration site client...")
-db.set_parametre('couleur_principale', '#1E88E5')
-db.set_parametre('texte_accueil', 'Bienvenue chez WashAfrique Pro ! Le meilleur service de lavage automobile à Dakar.')
-db.set_parametre('slogan', '✨ Votre voiture mérite le meilleur ✨')
-db.set_parametre('email_notifications', 'notifications@washafrique.sn')
-print("   ✅ Site client configuré")
-
 # Profil propriétaire (user_id = 1 pour admin)
 print("\n👤 Configuration profil propriétaire...")
 db.set_profil_proprietaire(
@@ -60,9 +63,10 @@ db.set_profil_proprietaire(
 print("   ✅ Profil propriétaire enregistré")
 
 print("\n" + "=" * 70)
-print("✅ CONFIGURATION ENTREPRISE TERMINÉE")
+print("✅ CONFIGURATION ENTREPRISE SÉNÉGAL TERMINÉE")
 print("=" * 70)
 print("\n📊 Récapitulatif:")
+print("   🇸🇳 Pays: SÉNÉGAL")
 print("   🏢 Nom: WashAfrique Pro")
 print("   📍 Adresse: Almadies, Dakar")
 print("   ☎️  Téléphone: +221 33 825 40 50")

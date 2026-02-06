@@ -31,9 +31,9 @@ if "db" not in st.session_state:
 nom_entreprise = st.session_state.db.get_parametre_site_client('nom_entreprise_site', 'WashAfrique Pro')
 slogan = st.session_state.db.get_parametre_site_client('slogan', 'Votre voiture mérite le meilleur')
 couleur_principale = st.session_state.db.get_parametre_site_client('couleur_principale', '#667eea')
-telephone = st.session_state.db.get_parametre_site_client('telephone_contact', '+225 XX XX XX XX')
+telephone = st.session_state.db.get_parametre_site_client('telephone_contact', '+221 XX XXX XX XX')
 email_contact = st.session_state.db.get_parametre_site_client('email_contact', 'contact@washafrique.com')
-adresse = st.session_state.db.get_parametre_site_client('adresse', 'Abidjan, Côte d\'Ivoire')
+adresse = st.session_state.db.get_parametre_site_client('adresse', 'Dakar, Côte d\'Ivoire')
 texte_accueil = st.session_state.db.get_parametre_site_client('texte_accueil', 'Réservez votre lavage en ligne')
 site_actif = st.session_state.db.get_parametre_site_client('site_actif', '1') == '1'
 reservation_active = st.session_state.db.get_parametre_site_client('reservation_active', '1') == '1'
