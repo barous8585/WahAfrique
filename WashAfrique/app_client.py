@@ -298,7 +298,10 @@ if st.session_state.page_active == 2:
             col1, col2 = st.columns(2)
             with col1:
                 services_actifs = [s for s in st.session_state.db.get_all_services() if s['actif']]
-                if services_actifs:
+                if not services_actifs:
+                    st.error("Aucun service disponible")
+                    service_choisi = None
+                else:
                     # Index par défaut = service présélectionné ou 0
                     index_default = 0
                     if 'service_preselectionne' in st.session_state:
@@ -313,9 +316,6 @@ if st.session_state.page_active == 2:
                         format_func=lambda x: f"{x['nom']} - {format_fcfa(x['prix'])}",
                         index=index_default
                     )
-                else:
-                    st.error("Aucun service disponible")
-                    st.stop()
                 
                 # Date minimum = demain
                 delai_min = int(st.session_state.db.get_parametre_site_client('delai_min_reservation', '2'))
@@ -361,6 +361,8 @@ if st.session_state.page_active == 2:
             if submit:
                 if not nom_client or not tel_client:
                     st.error("❌ Veuillez remplir tous les champs obligatoires (*)")
+                elif not service_choisi:
+                    st.error("❌ Aucun service disponible. Contactez l'entreprise.")
                 elif not heure_reservation:
                     st.error("❌ Aucun créneau disponible pour ce jour")
                 else:
